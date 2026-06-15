@@ -45,3 +45,23 @@ test('buildDllSearchPath prepends the DLL directory and engine Win64 binaries', 
   assert.equal(parts[1], 'C:\\WORKSPACE_UE\\UnrealEngine\\Engine\\Binaries\\Win64');
   assert.equal(parts[2], 'C:\\Windows\\System32');
 });
+
+test('buildDllSearchPath dedupes existing PATH entries case-insensitively', () => {
+  const dllDirectory = 'C:\\WORKSPACE_UE\\UnrealEngine\\Engine\\Binaries\\Win64\\UnrealPackageInsightBackend';
+  const engineBinaries = 'C:\\WORKSPACE_UE\\UnrealEngine\\Engine\\Binaries\\Win64';
+  const dllPath = `${dllDirectory}\\UnrealPackageInsightBackend.dll`;
+  const result = buildDllSearchPath({
+    dllPath,
+    engineRoot: 'C:\\WORKSPACE_UE\\UnrealEngine',
+    existingPath: [
+      'c:\\workspace_ue\\unrealengine\\engine\\binaries\\win64\\unrealpackageinsightbackend',
+      'C:\\Tools\\bin',
+      'c:\\workspace_ue\\unrealengine\\engine\\binaries\\win64',
+    ].join(path.delimiter),
+  });
+
+  const parts = result.split(path.delimiter);
+  assert.deepEqual(parts, [dllDirectory, engineBinaries, 'C:\\Tools\\bin']);
+  assert.equal(parts.filter((part) => part.toLowerCase() === dllDirectory.toLowerCase()).length, 1);
+  assert.equal(parts.filter((part) => part.toLowerCase() === engineBinaries.toLowerCase()).length, 1);
+});
