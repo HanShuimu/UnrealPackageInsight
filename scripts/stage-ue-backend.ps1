@@ -22,8 +22,9 @@ if (!(Test-Path -LiteralPath $SourceDir)) {
 
 $ResolvedProgramsDir = [System.IO.Path]::GetFullPath($ProgramsDir)
 $ResolvedDestDir = [System.IO.Path]::GetFullPath($DestDir)
+$ResolvedDestParent = [System.IO.Path]::GetFullPath((Split-Path -Parent $ResolvedDestDir))
 
-if (!$ResolvedDestDir.StartsWith($ResolvedProgramsDir, [System.StringComparison]::OrdinalIgnoreCase)) {
+if (![System.String]::Equals($ResolvedDestParent, $ResolvedProgramsDir, [System.StringComparison]::OrdinalIgnoreCase)) {
 	throw "Refusing to stage outside Engine Source Programs: $ResolvedDestDir"
 }
 
@@ -31,9 +32,9 @@ if ((Split-Path -Leaf $ResolvedDestDir) -ne "UnrealPackageInsightBackend") {
 	throw "Refusing to remove unexpected staging directory: $ResolvedDestDir"
 }
 
-if (Test-Path -LiteralPath $DestDir) {
-	Remove-Item -LiteralPath $DestDir -Recurse -Force
+if (Test-Path -LiteralPath $ResolvedDestDir) {
+	Remove-Item -LiteralPath $ResolvedDestDir -Recurse -Force
 }
 
-Copy-Item -LiteralPath $SourceDir -Destination $DestDir -Recurse
-Write-Output "[OK] Staged UE backend to $DestDir"
+Copy-Item -LiteralPath $SourceDir -Destination $ResolvedDestDir -Recurse
+Write-Output "[OK] Staged UE backend to $ResolvedDestDir"

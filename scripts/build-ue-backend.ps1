@@ -9,6 +9,7 @@ $ErrorActionPreference = "Stop"
 $BuildBat = Join-Path $EngineRoot "Engine\Build\BatchFiles\Build.bat"
 $ExpectedDll = Join-Path $EngineRoot "Engine\Binaries\Win64\UnrealPackageInsightBackend\UnrealPackageInsightBackend.dll"
 $BinariesDir = Join-Path $EngineRoot "Engine\Binaries\Win64"
+$ExpectedDllDir = Join-Path $BinariesDir "UnrealPackageInsightBackend"
 
 if (!(Test-Path -LiteralPath $BuildBat)) {
 	throw "Build.bat not found: $BuildBat"
@@ -25,10 +26,17 @@ if (Test-Path -LiteralPath $ExpectedDll) {
 	exit 0
 }
 
-$DiscoveredDll = Get-ChildItem -LiteralPath $BinariesDir -Recurse -Filter "UnrealPackageInsightBackend.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+$NewestTargetDll = Get-ChildItem -LiteralPath $ExpectedDllDir -Recurse -Filter "UnrealPackageInsightBackend.dll" -ErrorAction SilentlyContinue | Sort-Object -Property LastWriteTimeUtc -Descending | Select-Object -First 1
 
-if (!$DiscoveredDll) {
+if ($NewestTargetDll) {
+	Write-Output "UPI_BACKEND_DLL=$($NewestTargetDll.FullName)"
+	exit 0
+}
+
+$NewestDiscoveredDll = Get-ChildItem -LiteralPath $BinariesDir -Recurse -Filter "UnrealPackageInsightBackend.dll" -ErrorAction SilentlyContinue | Sort-Object -Property LastWriteTimeUtc -Descending | Select-Object -First 1
+
+if (!$NewestDiscoveredDll) {
 	throw "Build succeeded but UnrealPackageInsightBackend.dll was not found under $BinariesDir"
 }
 
-Write-Output "UPI_BACKEND_DLL=$($DiscoveredDll.FullName)"
+Write-Output "UPI_BACKEND_DLL=$($NewestDiscoveredDll.FullName)"
