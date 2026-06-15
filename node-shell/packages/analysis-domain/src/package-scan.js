@@ -12,7 +12,13 @@ function compareNames(left, right) {
   if (normalizedLeft > normalizedRight) {
     return 1;
   }
-  return left.name.localeCompare(right.name);
+  if (left.name < right.name) {
+    return -1;
+  }
+  if (left.name > right.name) {
+    return 1;
+  }
+  return 0;
 }
 
 function compareChildren(left, right) {

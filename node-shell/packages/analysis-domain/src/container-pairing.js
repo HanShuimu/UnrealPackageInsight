@@ -15,7 +15,13 @@ function comparePaths(left, right) {
   if (normalizedLeft > normalizedRight) {
     return 1;
   }
-  return left.localeCompare(right);
+  if (left < right) {
+    return -1;
+  }
+  if (left > right) {
+    return 1;
+  }
+  return 0;
 }
 
 function getContainerKind(filePath) {
@@ -36,7 +42,7 @@ function stripIoStorePartitionSuffix(baseName) {
 }
 
 function createPairKey(dir, baseName) {
-  return `${dir.toLowerCase()}|${baseName.toLowerCase()}`;
+  return `${path.win32.normalize(dir).toLowerCase()}|${baseName.toLowerCase()}`;
 }
 
 function getPairKey(filePath, kind) {

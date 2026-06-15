@@ -45,6 +45,18 @@ test('resolves a selected UTOC file to its matching UCAS file', () => {
   });
 });
 
+test('resolves IoStore pairs with mixed Windows path separators', () => {
+  const utocPath = 'C:\\Game\\Paks\\global.utoc';
+  const ucasPath = 'C:/Game/Paks/global.ucas';
+
+  assert.deepEqual(resolveIoStoreSelection(utocPath, [utocPath, ucasPath]), {
+    ok: true,
+    utocPath,
+    ucasPath,
+    ucasPaths: [ucasPath],
+  });
+});
+
 test('groups partitioned UCAS files with their base UTOC file', () => {
   const utocPath = 'C:\\Game\\Content\\Paks\\global.utoc';
   const ucasPath = 'C:\\Game\\Content\\Paks\\global_s1.ucas';
@@ -61,6 +73,27 @@ test('groups partitioned UCAS files with their base UTOC file', () => {
     utocPath,
     ucasPath,
     ucasPaths: [ucasPath],
+  });
+});
+
+test('sorts multiple UCAS partitions deterministically', () => {
+  const utocPath = 'C:\\Game\\Content\\Paks\\global.utoc';
+  const baseUcasPath = 'C:\\Game\\Content\\Paks\\global.ucas';
+  const partitionOnePath = 'C:\\Game\\Content\\Paks\\global_s1.ucas';
+  const partitionTwoPath = 'C:\\Game\\Content\\Paks\\global_s2.ucas';
+
+  const selection = resolveIoStoreSelection(partitionTwoPath, [
+    partitionTwoPath,
+    partitionOnePath,
+    utocPath,
+    baseUcasPath,
+  ]);
+
+  assert.deepEqual(selection, {
+    ok: true,
+    utocPath,
+    ucasPath: baseUcasPath,
+    ucasPaths: [baseUcasPath, partitionOnePath, partitionTwoPath],
   });
 });
 
