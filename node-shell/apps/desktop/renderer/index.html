@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>UnrealPackageInsight</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Package files">
+        <div class="toolbar">
+          <button id="open-directory" type="button" class="primary-button">Open</button>
+          <span id="status" class="status-text">Idle</span>
+        </div>
+        <div id="tree" class="tree" role="tree" aria-label="Package tree">
+          <p class="empty-state">Open a package directory to begin.</p>
+        </div>
+      </aside>
+
+      <main class="analysis-pane">
+        <header class="analysis-header">
+          <div>
+            <div class="label">Backend</div>
+            <div id="backend-info" class="header-value">Loading...</div>
+          </div>
+          <div>
+            <div class="label">Selected file</div>
+            <div id="selected-file" class="header-value path-value">None</div>
+          </div>
+        </header>
+
+        <nav id="tabs" class="tabs" aria-label="Analysis sections"></nav>
+        <section id="content" class="content" aria-live="polite">
+          <p class="empty-state">Select a supported package file from the tree.</p>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="aes-dialog" class="aes-dialog">
+      <form id="aes-form" method="dialog">
+        <h2>AES key required</h2>
+        <p id="aes-message" class="dialog-text">Enter the key for this container and analyze again.</p>
+        <label for="aes-key">AES key</label>
+        <input id="aes-key" name="aes-key" type="password" autocomplete="off" spellcheck="false">
+        <div class="dialog-actions">
+          <button id="aes-cancel" type="button">Cancel</button>
+          <button id="aes-submit" type="submit" class="primary-button">Analyze</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>
