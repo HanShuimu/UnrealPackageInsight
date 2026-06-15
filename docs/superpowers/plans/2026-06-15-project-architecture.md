@@ -202,13 +202,13 @@ include "upi_common.fbs";
 namespace upi.v1;
 
 table BackendInfoResponse {
-  schemaVersion: uint;
+  schema_version: uint;
   status: ResponseStatus;
   issues: [Issue];
-  backendName: string;
-  backendVersion: string;
-  unrealVersion: string;
-  protocolVersion: uint;
+  backend_name: string;
+  backend_version: string;
+  unreal_version: string;
+  protocol_version: uint;
 }
 
 root_type BackendInfoResponse;
@@ -225,56 +225,56 @@ include "upi_common.fbs";
 namespace upi.v1;
 
 table PakOverview {
-  pakPath: string;
-  mountPoint: string;
-  pakVersion: uint;
-  pakSize: ulong;
-  indexEncrypted: bool;
-  encryptionKeyGuid: string;
-  hasFullDirectoryIndex: bool;
-  partialListing: bool;
-  packageCount: uint;
-  compressedBlockCount: uint;
+  pak_path: string;
+  mount_point: string;
+  pak_version: uint;
+  pak_size: ulong;
+  index_encrypted: bool;
+  encryption_key_guid: string;
+  has_full_directory_index: bool;
+  partial_listing: bool;
+  package_count: uint;
+  compressed_block_count: uint;
 }
 
 table PakPackageEntry {
-  packagePath: string;
-  mountPoint: string;
+  package_path: string;
+  mount_point: string;
   offset: ulong;
-  payloadOffset: ulong;
+  payload_offset: ulong;
   size: ulong;
-  compressedSize: ulong;
-  recordSize: ulong;
+  compressed_size: ulong;
+  record_size: ulong;
   compression: string;
-  compressionMethodIndex: uint;
-  compressionBlockSize: uint;
-  compressionBlockCount: uint;
-  firstCompressedBlockIndex: uint;
-  relativeBlockOffsets: bool;
+  compression_method_index: uint;
+  compression_block_size: uint;
+  compression_block_count: uint;
+  first_compressed_block_index: uint;
+  relative_block_offsets: bool;
   order: uint;
   flags: uint;
   hash: string;
-  hasPath: bool;
+  has_path: bool;
 }
 
 table PakCompressedBlockEntry {
-  packageIndex: uint;
-  blockIndex: uint;
-  compressedStart: ulong;
-  compressedEnd: ulong;
-  compressedSize: ulong;
-  diskSize: ulong;
-  physicalStart: ulong;
-  physicalEnd: ulong;
+  package_index: uint;
+  block_index: uint;
+  compressed_start: ulong;
+  compressed_end: ulong;
+  compressed_size: ulong;
+  disk_size: ulong;
+  physical_start: ulong;
+  physical_end: ulong;
 }
 
 table PakAnalysisResponse {
-  schemaVersion: uint;
+  schema_version: uint;
   status: ResponseStatus;
   issues: [Issue];
   overview: PakOverview;
   packages: [PakPackageEntry];
-  compressedBlocks: [PakCompressedBlockEntry];
+  compressed_blocks: [PakCompressedBlockEntry];
 }
 
 root_type PakAnalysisResponse;
@@ -291,89 +291,89 @@ include "upi_common.fbs";
 namespace upi.v1;
 
 table IoStoreOverview {
-  utocPath: string;
-  containerBasePath: string;
-  containerId: ulong;
-  tocVersion: uint;
-  tocEntryCount: uint;
-  compressionBlockCount: uint;
-  compressionBlockSize: uint;
-  partitionCount: uint;
-  partitionSize: ulong;
-  containerFlags: uint;
-  encryptionKeyGuid: string;
-  directoryIndexSize: uint;
+  utoc_path: string;
+  container_base_path: string;
+  container_id: ulong;
+  toc_version: uint;
+  toc_entry_count: uint;
+  compression_block_count: uint;
+  compression_block_size: uint;
+  partition_count: uint;
+  partition_size: ulong;
+  container_flags: uint;
+  encryption_key_guid: string;
+  directory_index_size: uint;
   indexed: bool;
-  partialListing: bool;
+  partial_listing: bool;
 }
 
 table IoStorePartition {
-  partitionIndex: uint;
-  ucasPath: string;
+  partition_index: uint;
+  ucas_path: string;
   size: ulong;
 }
 
 table IoStorePackageEntry {
-  packagePath: string;
-  packageId: ulong;
-  firstChunkIndex: uint;
-  chunkCount: uint;
-  firstPartitionIndex: uint;
-  firstOffset: ulong;
+  package_path: string;
+  package_id: ulong;
+  first_chunk_index: uint;
+  chunk_count: uint;
+  first_partition_index: uint;
+  first_offset: ulong;
   size: ulong;
-  compressedSize: ulong;
-  diskSize: ulong;
+  compressed_size: ulong;
+  disk_size: ulong;
   order: uint;
-  hasPath: bool;
+  has_path: bool;
 }
 
 table IoStoreChunkEntry {
-  packageIndex: uint;
-  packagePath: string;
-  tocEntryIndex: uint;
-  chunkId: string;
-  chunkType: string;
-  packageId: ulong;
-  chunkIndex: uint;
-  bulkDataCookedIndex: uint;
-  logicalOffset: ulong;
+  package_index: uint;
+  package_path: string;
+  toc_entry_index: uint;
+  chunk_id: string;
+  chunk_type: string;
+  package_id: ulong;
+  chunk_index: uint;
+  bulk_data_cooked_index: uint;
+  logical_offset: ulong;
   offset: ulong;
-  ucasOffset: ulong;
+  ucas_offset: ulong;
   size: ulong;
-  compressedSize: ulong;
-  diskSize: ulong;
+  compressed_size: ulong;
+  disk_size: ulong;
   compression: string;
-  firstBlockIndex: uint;
-  blockCount: uint;
-  partitionIndex: uint;
+  first_block_index: uint;
+  block_count: uint;
+  partition_index: uint;
   order: uint;
-  metaFlags: uint;
-  containerFlags: uint;
+  meta_flags: uint;
+  container_flags: uint;
   hash: string;
-  hasPath: bool;
+  has_path: bool;
 }
 
 table IoStoreCompressedBlockEntry {
-  blockIndex: uint;
-  ownerTocEntryIndex: uint;
-  partitionIndex: uint;
+  block_index: uint;
+  owner_toc_entry_index: uint;
+  partition_index: uint;
   offset: ulong;
-  ucasOffset: ulong;
-  compressedSize: uint;
-  diskSize: uint;
-  uncompressedSize: uint;
+  ucas_offset: ulong;
+  compressed_size: uint;
+  disk_size: uint;
+  uncompressed_size: uint;
   compression: string;
 }
 
 table IoStoreAnalysisResponse {
-  schemaVersion: uint;
+  schema_version: uint;
   status: ResponseStatus;
   issues: [Issue];
   overview: IoStoreOverview;
   partitions: [IoStorePartition];
   packages: [IoStorePackageEntry];
   chunks: [IoStoreChunkEntry];
-  compressedBlocks: [IoStoreCompressedBlockEntry];
+  compressed_blocks: [IoStoreCompressedBlockEntry];
 }
 
 root_type IoStoreAnalysisResponse;
