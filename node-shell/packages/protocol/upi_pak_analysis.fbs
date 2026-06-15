@@ -3,56 +3,56 @@ include "upi_common.fbs";
 namespace upi.v1;
 
 table PakOverview {
-  pakPath: string;
-  mountPoint: string;
-  pakVersion: uint;
-  pakSize: ulong;
-  indexEncrypted: bool;
-  encryptionKeyGuid: string;
-  hasFullDirectoryIndex: bool;
-  partialListing: bool;
-  packageCount: uint;
-  compressedBlockCount: uint;
+  pak_path: string;
+  mount_point: string;
+  pak_version: uint;
+  pak_size: ulong;
+  index_encrypted: bool;
+  encryption_key_guid: string;
+  has_full_directory_index: bool;
+  partial_listing: bool;
+  package_count: uint;
+  compressed_block_count: uint;
 }
 
 table PakPackageEntry {
-  packagePath: string;
-  mountPoint: string;
+  package_path: string;
+  mount_point: string;
   offset: ulong;
-  payloadOffset: ulong;
+  payload_offset: ulong;
   size: ulong;
-  compressedSize: ulong;
-  recordSize: ulong;
+  compressed_size: ulong;
+  record_size: ulong;
   compression: string;
-  compressionMethodIndex: uint;
-  compressionBlockSize: uint;
-  compressionBlockCount: uint;
-  firstCompressedBlockIndex: uint;
-  relativeBlockOffsets: bool;
+  compression_method_index: uint;
+  compression_block_size: uint;
+  compression_block_count: uint;
+  first_compressed_block_index: uint;
+  relative_block_offsets: bool;
   order: uint;
   flags: uint;
   hash: string;
-  hasPath: bool;
+  has_path: bool;
 }
 
 table PakCompressedBlockEntry {
-  packageIndex: uint;
-  blockIndex: uint;
-  compressedStart: ulong;
-  compressedEnd: ulong;
-  compressedSize: ulong;
-  diskSize: ulong;
-  physicalStart: ulong;
-  physicalEnd: ulong;
+  package_index: uint;
+  block_index: uint;
+  compressed_start: ulong;
+  compressed_end: ulong;
+  compressed_size: ulong;
+  disk_size: ulong;
+  physical_start: ulong;
+  physical_end: ulong;
 }
 
 table PakAnalysisResponse {
-  schemaVersion: uint;
+  schema_version: uint;
   status: ResponseStatus;
   issues: [Issue];
   overview: PakOverview;
   packages: [PakPackageEntry];
-  compressedBlocks: [PakCompressedBlockEntry];
+  compressed_blocks: [PakCompressedBlockEntry];
 }
 
 root_type PakAnalysisResponse;

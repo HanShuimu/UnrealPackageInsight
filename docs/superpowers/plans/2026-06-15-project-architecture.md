@@ -33,6 +33,7 @@ node-shell/
       upi_iostore_analysis.fbs
       generated/
         cpp/
+        ts/
         js/
       src/
         backend-info-decoder.js
@@ -393,8 +394,10 @@ $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = Split-Path -Parent $ScriptDir
+$NodeShellDir = Join-Path $RepoRoot "node-shell"
 $ProtocolDir = Join-Path $RepoRoot "node-shell\packages\protocol"
 $CppOut = Join-Path $ProtocolDir "generated\cpp"
+$TsOut = Join-Path $ProtocolDir "generated\ts"
 $JsOut = Join-Path $ProtocolDir "generated\js"
 
 if ([string]::IsNullOrWhiteSpace($Flatc)) {
@@ -408,7 +411,17 @@ if ([string]::IsNullOrWhiteSpace($Flatc) -or !(Test-Path -LiteralPath $Flatc)) {
 	throw "flatc not found. Install the FlatBuffers compiler or set UPI_FLATC to flatc.exe."
 }
 
-New-Item -ItemType Directory -Force -Path $CppOut, $JsOut | Out-Null
+$Tsc = Join-Path $NodeShellDir "node_modules\.bin\tsc.cmd"
+if (!(Test-Path -LiteralPath $Tsc)) {
+	throw "TypeScript compiler not found at $Tsc. Run npm install from node-shell before generating protocol bindings."
+}
+
+foreach ($OutDir in @($CppOut, $TsOut, $JsOut)) {
+	if (Test-Path -LiteralPath $OutDir) {
+		Remove-Item -LiteralPath $OutDir -Recurse -Force
+	}
+	New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+}
 
 $Schemas = @(
 	"upi_backend_info.fbs",
@@ -416,16 +429,41 @@ $Schemas = @(
 	"upi_iostore_analysis.fbs"
 )
 
-foreach ($Schema in $Schemas) {
-	$SchemaPath = Join-Path $ProtocolDir $Schema
-	& $Flatc --cpp --filename-suffix "_generated" -o $CppOut -I $ProtocolDir $SchemaPath
-	if ($LASTEXITCODE -ne 0) {
-		throw "flatc C++ generation failed for $Schema"
-	}
-	& $Flatc --js --gen-onefile -o $JsOut -I $ProtocolDir $SchemaPath
-	if ($LASTEXITCODE -ne 0) {
-		throw "flatc JS generation failed for $Schema"
-	}
+$SchemaPaths = foreach ($Schema in $Schemas) {
+	Join-Path $ProtocolDir $Schema
+}
+
+$CommonSchemaPath = Join-Path $ProtocolDir "upi_common.fbs"
+$AllSchemaPaths = @($CommonSchemaPath) + $SchemaPaths
+
+& $Flatc --warnings-as-errors --cpp --filename-suffix "_generated" -o $CppOut -I $ProtocolDir @AllSchemaPaths
+if ($LASTEXITCODE -ne 0) {
+	throw "flatc C++ generation failed."
+}
+
+& $Flatc --warnings-as-errors --ts -o $TsOut -I $ProtocolDir @AllSchemaPaths
+if ($LASTEXITCODE -ne 0) {
+	throw "flatc TypeScript generation failed."
+}
+
+$TsFiles = @(Get-ChildItem -Path $TsOut -Recurse -Filter "*.ts" | Select-Object -ExpandProperty FullName)
+if (!$TsFiles -or $TsFiles.Count -eq 0) {
+	throw "flatc TypeScript generation produced no .ts files in $TsOut."
+}
+
+$TscArgs = @(
+	"--target", "ES2020",
+	"--module", "commonjs",
+	"--moduleResolution", "node",
+	"--rootDir", $TsOut,
+	"--outDir", $JsOut,
+	"--skipLibCheck",
+	"--noEmitOnError"
+) + $TsFiles
+
+& $Tsc @TscArgs
+if ($LASTEXITCODE -ne 0) {
+	throw "TypeScript compilation failed for generated protocol bindings."
 }
 
 Write-Output "[OK] Generated FlatBuffers bindings in $ProtocolDir\generated"
@@ -444,11 +482,17 @@ Expected generated files include:
 
 ```text
 node-shell/packages/protocol/generated/cpp/upi_backend_info_generated.h
+node-shell/packages/protocol/generated/cpp/upi_common_generated.h
 node-shell/packages/protocol/generated/cpp/upi_pak_analysis_generated.h
 node-shell/packages/protocol/generated/cpp/upi_iostore_analysis_generated.h
-node-shell/packages/protocol/generated/js/upi_backend_info_generated.js
-node-shell/packages/protocol/generated/js/upi_pak_analysis_generated.js
-node-shell/packages/protocol/generated/js/upi_iostore_analysis_generated.js
+node-shell/packages/protocol/generated/ts/upi/v1.ts
+node-shell/packages/protocol/generated/ts/upi/v1/backend-info-response.ts
+node-shell/packages/protocol/generated/ts/upi/v1/pak-analysis-response.ts
+node-shell/packages/protocol/generated/ts/upi/v1/io-store-analysis-response.ts
+node-shell/packages/protocol/generated/js/upi/v1.js
+node-shell/packages/protocol/generated/js/upi/v1/backend-info-response.js
+node-shell/packages/protocol/generated/js/upi/v1/pak-analysis-response.js
+node-shell/packages/protocol/generated/js/upi/v1/io-store-analysis-response.js
 ```
 
 - [ ] **Step 7: Commit**
@@ -497,8 +541,7 @@ Create `node-shell/packages/protocol/src/backend-info-decoder.js`:
 
 ```js
 const flatbuffers = require('flatbuffers').flatbuffers || require('flatbuffers');
-const { upi } = require('../generated/js/upi_backend_info_generated');
-const { BackendInfoResponse } = upi.v1;
+const { BackendInfoResponse } = require('../generated/js/upi/v1/backend-info-response.js');
 const { readIssue } = require('./issue-utils');
 
 function decodeBackendInfoResponse(buffer) {
@@ -534,8 +577,7 @@ Create `node-shell/packages/protocol/src/pak-analysis-decoder.js` with this shap
 
 ```js
 const flatbuffers = require('flatbuffers').flatbuffers || require('flatbuffers');
-const { upi } = require('../generated/js/upi_pak_analysis_generated');
-const { PakAnalysisResponse } = upi.v1;
+const { PakAnalysisResponse } = require('../generated/js/upi/v1/pak-analysis-response.js');
 const { readIssue } = require('./issue-utils');
 
 function readU64(value) {
@@ -625,8 +667,7 @@ Create `node-shell/packages/protocol/src/iostore-analysis-decoder.js`:
 
 ```js
 const flatbuffers = require('flatbuffers').flatbuffers || require('flatbuffers');
-const { upi } = require('../generated/js/upi_iostore_analysis_generated');
-const { IoStoreAnalysisResponse } = upi.v1;
+const { IoStoreAnalysisResponse } = require('../generated/js/upi/v1/io-store-analysis-response.js');
 const { readIssue } = require('./issue-utils');
 
 function readU64(value) {
@@ -769,8 +810,7 @@ test('decodeBackendInfoResponse decodes a generated response', () => {
   const name = builder.createString('UnrealPackageInsightBackend');
   const version = builder.createString('0.1.0');
   const unrealVersion = builder.createString('5.x');
-  const { upi } = require('../generated/js/upi_backend_info_generated');
-  const { BackendInfoResponse } = upi.v1;
+  const { BackendInfoResponse } = require('../generated/js/upi/v1/backend-info-response.js');
   BackendInfoResponse.startBackendInfoResponse(builder);
   BackendInfoResponse.addSchemaVersion(builder, 1);
   BackendInfoResponse.addStatus(builder, 0);

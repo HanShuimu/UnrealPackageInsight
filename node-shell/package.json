@@ -5,7 +5,7 @@
   "type": "commonjs",
   "main": "bin/upi-gui.js",
   "scripts": {
-    "test": "node --test",
+    "test": "node --test \"test/*.test.js\" \"packages/protocol/test/*.test.js\"",
     "call-backend": "node src/index.js",
     "generate-protocol": "powershell -ExecutionPolicy Bypass -File ../scripts/generate-protocol.ps1",
     "gui": "node bin/upi-gui.js",
@@ -16,5 +16,7 @@
     "flatbuffers": "^24.3.25",
     "koffi": "3.0.2"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
 }
