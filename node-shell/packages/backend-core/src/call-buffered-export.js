@@ -3,7 +3,7 @@ const CALL_BUFFER_TOO_SMALL = 1;
 
 function createRequiredSizePointer(koffi) {
   if (koffi && typeof koffi.alloc === 'function') {
-    return koffi.alloc('int', 1);
+    return koffi.alloc('int32', 1);
   }
 
   return [0];
@@ -23,7 +23,7 @@ function readRequiredSize(requiredSize, koffi) {
   }
 
   if (koffi && typeof koffi.decode === 'function') {
-    return Number(koffi.decode(requiredSize, 'int'));
+    return Number(koffi.decode(requiredSize, 'int32'));
   }
 
   return Number(requiredSize);

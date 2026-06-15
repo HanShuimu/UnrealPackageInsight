@@ -50,6 +50,44 @@ test('callBufferedExport passes leading arguments before output buffers', () => 
   assert.deepEqual(result, payload);
 });
 
+test('callBufferedExport uses int32 koffi pointers for required output size', () => {
+  const payload = Buffer.from('info');
+  const allocTypes = [];
+  const decodeTypes = [];
+  const koffi = {
+    alloc(type, length) {
+      allocTypes.push({ type, length });
+      return { requiredSize: 0 };
+    },
+    decode(pointer, type) {
+      decodeTypes.push(type);
+      return pointer.requiredSize;
+    },
+  };
+
+  const result = callBufferedExport({
+    koffi,
+    initialSize: 2,
+    fn(output, capacity, requiredSize) {
+      if (capacity < payload.length) {
+        requiredSize.requiredSize = payload.length;
+        return CALL_BUFFER_TOO_SMALL;
+      }
+
+      payload.copy(output);
+      requiredSize.requiredSize = payload.length;
+      return CALL_OK;
+    },
+  });
+
+  assert.deepEqual(result, payload);
+  assert.deepEqual(allocTypes, [
+    { type: 'int32', length: 1 },
+    { type: 'int32', length: 1 },
+  ]);
+  assert.deepEqual(decodeTypes, ['int32', 'int32']);
+});
+
 test('callBufferedExport throws when the resized capacity is invalid', () => {
   assert.throws(
     () =>
