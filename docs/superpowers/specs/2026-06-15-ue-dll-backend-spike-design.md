@@ -72,6 +72,29 @@ docs/
 
 The exact UE-side placement may need adjustment during implementation. The intended first attempt is to keep the backend source in this repository and document how it is copied or symlinked into an Engine `Source/Programs` location, or otherwise exposed to UBT.
 
+## Local Engine Assumption
+
+The first implementation should use the source-built Unreal Engine tree at:
+
+```text
+C:\WORKSPACE_UE\UnrealEngine
+```
+
+The expected build entry point is:
+
+```text
+C:\WORKSPACE_UE\UnrealEngine\Engine\Build\BatchFiles\Build.bat
+```
+
+This engine source tree already contains Program targets and DLL-producing Program targets. The spike should model the target configuration after these local examples:
+
+- `Engine\Source\Programs\BlankProgram\BlankProgram.Target.cs`
+- `Engine\Source\Programs\VirtualProduction\TextureShare\TextureShareSDK.Target.cs`
+- `Engine\Source\Programs\Shared\EpicGames.Perforce.Native\DotNetPerforceLib.Target.cs`
+- `Engine\Source\Programs\Enterprise\Datasmith\DatasmithSDK\DatasmithSDK.Target.cs`
+
+The implementation may read from this engine tree freely. It should not make irreversible changes to the engine tree. If copying the spike Program into `Engine\Source\Programs` is required, the copied directory must be treated as generated staging for the spike and documented in the spike report.
+
 ## UE Backend Shape
 
 The backend target should be a minimal UE Program-style target configured to produce a DLL if UBT permits it.
@@ -93,6 +116,96 @@ UnrealPackageInsightBackend/0.1 UE-DLL-Spike
 
 The first version should avoid returning heap-allocated strings across the boundary. This avoids allocator ownership issues between UE and Node.
 
+## UE Program DLL Build Plan
+
+The first build attempt should stage the UE backend source as:
+
+```text
+C:\WORKSPACE_UE\UnrealEngine\Engine\Source\Programs\UnrealPackageInsightBackend
+```
+
+The staged Program should include:
+
+```text
+UnrealPackageInsightBackend.Target.cs
+Source\UnrealPackageInsightBackend\UnrealPackageInsightBackend.Build.cs
+Source\UnrealPackageInsightBackend\Private\UnrealPackageInsightBackend.cpp
+Source\UnrealPackageInsightBackend\Public\UnrealPackageInsightBackend.h
+```
+
+The target should be Win64-only for the spike and should start from this configuration:
+
+```csharp
+using UnrealBuildTool;
+
+[SupportedPlatforms("Win64")]
+public class UnrealPackageInsightBackendTarget : TargetRules
+{
+    public UnrealPackageInsightBackendTarget(TargetInfo Target) : base(Target)
+    {
+        Type = TargetType.Program;
+        DefaultBuildSettings = BuildSettingsVersion.Latest;
+        IncludeOrderVersion = EngineIncludeOrderVersion.Latest;
+        LinkType = TargetLinkType.Monolithic;
+        LaunchModuleName = "UnrealPackageInsightBackend";
+
+        bShouldCompileAsDLL = true;
+        bHasExports = true;
+
+        bBuildDeveloperTools = false;
+        bBuildWithEditorOnlyData = false;
+        bCompileAgainstEngine = false;
+        bCompileAgainstCoreUObject = false;
+        bCompileAgainstApplicationCore = false;
+        bCompileICU = false;
+        bUsesSlate = false;
+
+        OutputFile = "Binaries/Win64/UnrealPackageInsightBackend/UnrealPackageInsightBackend.dll";
+    }
+}
+```
+
+The module should depend only on `Core` for the first attempt. If even `Core` causes unwanted dependencies for the external Node process, the spike should record that and try a narrower plain C++ export only if UBT still permits the Program target to build.
+
+The intended build command is:
+
+```powershell
+& 'C:\WORKSPACE_UE\UnrealEngine\Engine\Build\BatchFiles\Build.bat' UnrealPackageInsightBackend Win64 Development -WaitMutex
+```
+
+Expected primary artifact:
+
+```text
+C:\WORKSPACE_UE\UnrealEngine\Engine\Binaries\Win64\UnrealPackageInsightBackend\UnrealPackageInsightBackend.dll
+```
+
+If `OutputFile` is rejected or ignored by UBT for this target shape, the implementation should remove it and discover the actual output under:
+
+```text
+C:\WORKSPACE_UE\UnrealEngine\Engine\Binaries\Win64
+```
+
+The spike report should capture the exact target file used, the exact build command, and the exact output path.
+
+## Export Verification Plan
+
+After building the DLL, verify the export surface before calling it from Node.
+
+Preferred check when Visual Studio tools are available:
+
+```powershell
+dumpbin /exports C:\WORKSPACE_UE\UnrealEngine\Engine\Binaries\Win64\UnrealPackageInsightBackend\UnrealPackageInsightBackend.dll
+```
+
+The expected exports are undecorated C symbols:
+
+```text
+UPI_GetBackendInfo
+UPI_Add
+```
+
+If `dumpbin` is unavailable, the Node FFI symbol resolution step is the required verification. The spike should still document that export inspection was skipped because the tool was unavailable.
+
 ## Node Shell Shape
 
 The Node shell should load the compiled DLL and call the exported functions.
@@ -107,6 +220,21 @@ The shell command should print:
 Backend info: UnrealPackageInsightBackend/0.1 UE-DLL-Spike
 UPI_Add(20, 22): 42
 ```
+
+The Node shell should accept the DLL path through a command-line argument or environment variable so the first spike does not hardcode the engine output path:
+
+```powershell
+node node-shell\src\index.js C:\WORKSPACE_UE\UnrealEngine\Engine\Binaries\Win64\UnrealPackageInsightBackend\UnrealPackageInsightBackend.dll
+```
+
+Before loading the DLL, the shell should prepend these directories to the process search path:
+
+```text
+<dll directory>
+C:\WORKSPACE_UE\UnrealEngine\Engine\Binaries\Win64
+```
+
+This is a pragmatic first attempt to help Windows resolve dependent UE DLLs. If dependencies still fail to load, the failure should be recorded rather than hidden by broad file copying.
 
 ## Success Criteria
 
@@ -152,6 +280,8 @@ If UBT cannot produce a suitable DLL or the DLL cannot be safely loaded by Node,
 ## Open Implementation Notes
 
 The implementation should first locate a usable UE5 engine installation on the machine.
+
+For the first implementation, the default engine path is `C:\WORKSPACE_UE\UnrealEngine`.
 
 The implementation should avoid irreversible changes to the engine directory. Any copy into the engine tree should be documented, and symlink or generated staging folders should be preferred when practical.
 
