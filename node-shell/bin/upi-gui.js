@@ -17,6 +17,8 @@ function main({
   electronPath = require('electron'),
   backendClientFactory = createBackendClient,
   koffiModule = koffi,
+  reportError = console.error,
+  processController = process,
 } = {}) {
   const dllPath = resolveDllPath(argv[2] || env.UPI_BACKEND_DLL);
   const engineRoot = env.UPI_ENGINE_ROOT || DEFAULT_ENGINE_ROOT;
@@ -39,13 +41,25 @@ function main({
     },
   });
 
+  let spawnFailed = false;
+
   child.on('exit', (code, signal) => {
-    if (signal) {
-      process.kill(process.pid, signal);
+    if (spawnFailed) {
       return;
     }
 
-    process.exitCode = code ?? 0;
+    if (signal) {
+      processController.kill(processController.pid, signal);
+      return;
+    }
+
+    processController.exitCode = code ?? 0;
+  });
+
+  child.on('error', (error) => {
+    spawnFailed = true;
+    reportError(`Failed to start Electron: ${error.message}`);
+    processController.exitCode = 1;
   });
 
   return child;

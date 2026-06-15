@@ -4,7 +4,24 @@ const test = require('node:test');
 const {
   createDesktopState,
   createIpcHandlers,
+  startDesktopApp,
 } = require('../main.js');
+
+test('backend:getInfo returns backend.not_ready before initialization', () => {
+  const state = createDesktopState();
+  const handlers = createIpcHandlers({ state });
+
+  const result = handlers.getBackendInfo();
+
+  assert.deepEqual(result, {
+    status: 'Error',
+    issues: [{
+      severity: 'error',
+      code: 'backend.not_ready',
+      message: 'Backend is not initialized.',
+    }],
+  });
+});
 
 test('analysis:analyze returns package.not_open before a package directory is opened', async () => {
   const state = createDesktopState({ backendClient: { getBackendInfo() {} } });
@@ -120,4 +137,56 @@ test('analysis:submitAesKeyAndRetry stores valid AES keys, retries, and reports 
   });
   assert.equal(state.aesSession.getKey(), '');
   assert.equal(cleared, true);
+});
+
+test('startDesktopApp shows an error dialog and quits when startup initialization fails', async () => {
+  const handled = new Map();
+  const appEvents = new Map();
+  const dialogs = [];
+  let quitCount = 0;
+  const app = {
+    whenReady() {
+      return Promise.resolve();
+    },
+    on(name, handler) {
+      appEvents.set(name, handler);
+    },
+    quit() {
+      quitCount += 1;
+    },
+  };
+  const ipcMain = {
+    handle(name, handler) {
+      handled.set(name, handler);
+    },
+  };
+  const dialog = {
+    showErrorBox(title, content) {
+      dialogs.push({ title, content });
+    },
+  };
+
+  startDesktopApp({
+    app,
+    BrowserWindowClass: { getAllWindows: () => [] },
+    dialog,
+    ipcMain,
+    initializeBackendClient: () => {
+      throw new Error('DLL missing');
+    },
+    createWindow: () => {
+      throw new Error('window should not be created');
+    },
+  });
+
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.deepEqual(dialogs, [{
+    title: 'UnrealPackageInsight failed to start',
+    content: 'DLL missing',
+  }]);
+  assert.equal(quitCount, 1);
+  assert.equal(handled.has('backend:getInfo'), true);
+  assert.equal(appEvents.has('window-all-closed'), true);
 });

@@ -25,6 +25,15 @@ const PACKAGE_NOT_OPEN_RESPONSE = {
   }],
 };
 
+const BACKEND_NOT_READY_RESPONSE = {
+  status: 'Error',
+  issues: [{
+    severity: 'error',
+    code: 'backend.not_ready',
+    message: 'Backend is not initialized.',
+  }],
+};
+
 function createValidationErrorResponse(error) {
   return {
     status: 'Error',
@@ -64,6 +73,10 @@ function createIpcHandlers({
 
   return {
     getBackendInfo() {
+      if (!state.backendClient) {
+        return cloneResponse(BACKEND_NOT_READY_RESPONSE);
+      }
+
       return state.backendClient.getBackendInfo();
     },
 
@@ -154,24 +167,47 @@ function initializeBackendClient({
   return state.backendClient;
 }
 
-function startDesktopApp() {
-  const handlers = createIpcHandlers({ state: desktopState });
-  registerIpcHandlers(ipcMain, handlers);
+function showStartupErrorAndQuit({ app: appModule, dialog: dialogModule, error }) {
+  try {
+    if (dialogModule && typeof dialogModule.showErrorBox === 'function') {
+      dialogModule.showErrorBox(
+        'UnrealPackageInsight failed to start',
+        error?.message || String(error),
+      );
+    }
+  } finally {
+    appModule.quit();
+  }
+}
 
-  app.whenReady().then(() => {
-    initializeBackendClient();
-    createWindow();
+function startDesktopApp({
+  app: appModule = app,
+  BrowserWindowClass = BrowserWindow,
+  dialog: dialogModule = dialog,
+  ipcMain: ipcMainModule = ipcMain,
+  state = desktopState,
+  initializeBackendClient: initializeBackendClientFn = initializeBackendClient,
+  createWindow: createWindowFn = createWindow,
+} = {}) {
+  const handlers = createIpcHandlers({ state, dialog: dialogModule });
+  registerIpcHandlers(ipcMainModule, handlers);
 
-    app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow();
+  appModule.whenReady().then(() => {
+    initializeBackendClientFn({ state });
+    createWindowFn({ BrowserWindowClass });
+
+    appModule.on('activate', () => {
+      if (BrowserWindowClass.getAllWindows().length === 0) {
+        createWindowFn({ BrowserWindowClass });
       }
     });
+  }).catch((error) => {
+    showStartupErrorAndQuit({ app: appModule, dialog: dialogModule, error });
   });
 
-  app.on('window-all-closed', () => {
+  appModule.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
-      app.quit();
+      appModule.quit();
     }
   });
 }
@@ -181,10 +217,13 @@ if (app && BrowserWindow && dialog && ipcMain) {
 }
 
 module.exports = {
+  BACKEND_NOT_READY_RESPONSE,
   PACKAGE_NOT_OPEN_RESPONSE,
   createDesktopState,
   createIpcHandlers,
   registerIpcHandlers,
   createWindow,
   initializeBackendClient,
+  showStartupErrorAndQuit,
+  startDesktopApp,
 };
