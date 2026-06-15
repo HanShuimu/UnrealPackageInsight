@@ -1,17 +1,15 @@
+const { createBackendClient } = require('../packages/backend-core/src/backend-client.js');
+
 function runBackendSmoke({ dllPath, koffi, log = console.log }) {
-  const library = koffi.load(dllPath);
-  const getBackendInfo = library.func('str UPI_GetBackendInfo()');
-  const add = library.func('int UPI_Add(int, int)');
+  const client = createBackendClient({ dllPath, koffi });
+  const backendInfo = client.getBackendInfo();
 
-  const backendInfo = getBackendInfo();
-  const addResult = add(20, 22);
-
-  log(`Backend info: ${backendInfo}`);
-  log(`UPI_Add(20, 22): ${addResult}`);
+  log(`Backend: ${backendInfo.backendName} ${backendInfo.backendVersion}`);
+  log(`Unreal: ${backendInfo.unrealVersion}`);
+  log(`Protocol: ${backendInfo.protocolVersion}`);
 
   return {
     backendInfo,
-    addResult,
   };
 }
 

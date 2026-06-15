@@ -1,18 +1,59 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
+const flatbuffers = require('flatbuffers');
+
+const {
+  BackendInfoResponse,
+  ResponseStatus,
+} = require('../packages/protocol/generated/js/upi/v1.js');
 const { runBackendSmoke } = require('../src/backend-runner');
+
+function createBackendInfoBuffer() {
+  const builder = new flatbuffers.Builder(256);
+  const backendName = builder.createString('UnrealPackageInsightBackend');
+  const backendVersion = builder.createString('0.2.0');
+  const unrealVersion = builder.createString('5.x');
+  const root = BackendInfoResponse.createBackendInfoResponse(
+    builder,
+    1,
+    ResponseStatus.Ok,
+    0,
+    backendName,
+    backendVersion,
+    unrealVersion,
+    1,
+  );
+  BackendInfoResponse.finishBackendInfoResponseBuffer(builder, root);
+  return Buffer.from(builder.asUint8Array());
+}
 
 function createFakeKoffi() {
   const calls = [];
+  const backendInfoBuffer = createBackendInfoBuffer();
   const fakeLibrary = {
     func(signature) {
       calls.push(signature);
-      if (signature === 'str UPI_GetBackendInfo()') {
-        return () => 'UnrealPackageInsightBackend/0.1 UE-DLL-Spike';
+      if (signature === 'int UPI_GetBackendInfoV1(void*, int, void*)') {
+        return (output, capacity, requiredSize) => {
+          requiredSize[0] = backendInfoBuffer.length;
+          if (capacity < backendInfoBuffer.length) {
+            return 1;
+          }
+
+          backendInfoBuffer.copy(output);
+          return 0;
+        };
       }
-      if (signature === 'int UPI_Add(int, int)') {
-        return (a, b) => a + b;
+      if (signature === 'int UPI_AnalyzePakV1(str, str, void*, int, void*)') {
+        return () => {
+          throw new Error('Unexpected Pak analysis call');
+        };
+      }
+      if (signature === 'int UPI_AnalyzeIoStoreV1(str, str, str, void*, int, void*)') {
+        return () => {
+          throw new Error('Unexpected IoStore analysis call');
+        };
       }
       throw new Error(`Unexpected signature: ${signature}`);
     },
@@ -27,7 +68,7 @@ function createFakeKoffi() {
   };
 }
 
-test('runBackendSmoke loads the DLL and calls exported functions', () => {
+test('runBackendSmoke loads the DLL and prints V1 backend info', () => {
   const fakeKoffi = createFakeKoffi();
   const output = [];
 
@@ -39,13 +80,22 @@ test('runBackendSmoke loads the DLL and calls exported functions', () => {
 
   assert.deepEqual(fakeKoffi.calls, [
     'load:C:\\backend\\UnrealPackageInsightBackend.dll',
-    'str UPI_GetBackendInfo()',
-    'int UPI_Add(int, int)',
+    'int UPI_GetBackendInfoV1(void*, int, void*)',
+    'int UPI_AnalyzePakV1(str, str, void*, int, void*)',
+    'int UPI_AnalyzeIoStoreV1(str, str, str, void*, int, void*)',
   ]);
   assert.deepEqual(output, [
-    'Backend info: UnrealPackageInsightBackend/0.1 UE-DLL-Spike',
-    'UPI_Add(20, 22): 42',
+    'Backend: UnrealPackageInsightBackend 0.2.0',
+    'Unreal: 5.x',
+    'Protocol: 1',
   ]);
-  assert.equal(result.backendInfo, 'UnrealPackageInsightBackend/0.1 UE-DLL-Spike');
-  assert.equal(result.addResult, 42);
+  assert.deepEqual(result.backendInfo, {
+    schemaVersion: 1,
+    status: ResponseStatus.Ok,
+    issues: [],
+    backendName: 'UnrealPackageInsightBackend',
+    backendVersion: '0.2.0',
+    unrealVersion: '5.x',
+    protocolVersion: 1,
+  });
 });

@@ -3,6 +3,7 @@
 #include "UnrealPackageInsightBackend.h"
 
 #include "HAL/UnrealMemory.h"
+#include "Math/NumericLimits.h"
 #include "upi_backend_info_generated.h"
 #include "upi_iostore_analysis_generated.h"
 #include "upi_pak_analysis_generated.h"
@@ -17,6 +18,8 @@ namespace
 
 	TArray<uint8> UPI_CopyBuilderBytes(const flatbuffers::FlatBufferBuilder& Builder)
 	{
+		checkf(Builder.GetSize() <= static_cast<size_t>(TNumericLimits<int32>::Max()), TEXT("UPI FlatBuffer response exceeds int32 size"));
+
 		TArray<uint8> ResponseBytes;
 		ResponseBytes.Append(Builder.GetBufferPointer(), static_cast<int32>(Builder.GetSize()));
 		return ResponseBytes;
