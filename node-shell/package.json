@@ -1,0 +1,13 @@
+{
+  "name": "unreal-package-insight-node-shell",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test",
+    "call-backend": "node src/index.js"
+  },
+  "dependencies": {
+    "koffi": "3.0.2"
+  }
+}
