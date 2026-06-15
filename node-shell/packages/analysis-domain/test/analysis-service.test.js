@@ -116,6 +116,108 @@ test('reuses cached results for the same file stamps and AES key, then misses ca
   assert.equal(calls.pak[1].aesKey, '11111111111111111111111111111111');
 });
 
+test('misses the Pak cache when the selected file stamp changes', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-analysis-service-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const pakPath = path.join(root, 'pakchunk0-Windows.pak');
+  createFile(pakPath, 'pak');
+  const { calls, client } = createBackendClient();
+  const service = new AnalysisService({ backendClient: client, filePaths: [pakPath] });
+
+  const first = await service.analyze(pakPath);
+  createFile(pakPath, 'pak-updated');
+  const second = await service.analyze(pakPath);
+
+  assert.notEqual(first, second);
+  assert.equal(calls.pak.length, 2);
+});
+
+test('reuses IoStore cache entries when UTOC and all UCAS partition stamps are unchanged', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-analysis-service-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const utocPath = path.join(root, 'global.utoc');
+  const ucasPath = path.join(root, 'global.ucas');
+  const secondaryUcasPath = path.join(root, 'global_s1.ucas');
+  createFile(utocPath, 'utoc');
+  createFile(ucasPath, 'ucas');
+  createFile(secondaryUcasPath, 'secondary');
+  const { calls, client } = createBackendClient();
+  const service = new AnalysisService({
+    backendClient: client,
+    filePaths: [utocPath, ucasPath, secondaryUcasPath],
+  });
+
+  const first = await service.analyze(secondaryUcasPath);
+  const second = await service.analyze(secondaryUcasPath);
+
+  assert.equal(first, second);
+  assert.equal(calls.iostore.length, 1);
+});
+
+test('misses IoStore cache when a secondary UCAS partition stamp changes', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-analysis-service-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const utocPath = path.join(root, 'global.utoc');
+  const ucasPath = path.join(root, 'global.ucas');
+  const secondaryUcasPath = path.join(root, 'global_s1.ucas');
+  createFile(utocPath, 'utoc');
+  createFile(ucasPath, 'ucas');
+  createFile(secondaryUcasPath, 'secondary');
+  const { calls, client } = createBackendClient();
+  const service = new AnalysisService({
+    backendClient: client,
+    filePaths: [utocPath, ucasPath, secondaryUcasPath],
+  });
+
+  const first = await service.analyze(secondaryUcasPath);
+  createFile(secondaryUcasPath, 'secondary-updated');
+  const second = await service.analyze(secondaryUcasPath);
+
+  assert.notEqual(first, second);
+  assert.equal(calls.iostore.length, 2);
+  assert.deepEqual(calls.iostore.map((call) => call.ucasPath), [ucasPath, ucasPath]);
+});
+
+test('returns container.unsupported for unsupported file types without calling backend', async () => {
+  const { calls, client } = createBackendClient();
+  const service = new AnalysisService({ backendClient: client, filePaths: [] });
+
+  const result = await service.analyze('C:\\Game\\Content\\Paks\\readme.txt');
+
+  assert.deepEqual(result, {
+    status: 'Error',
+    issues: [{
+      severity: 'error',
+      code: 'container.unsupported',
+      message: 'Unsupported container file type.',
+    }],
+  });
+  assert.deepEqual(calls.pak, []);
+  assert.deepEqual(calls.iostore, []);
+});
+
+test('returns container.file_unavailable for deleted files without calling backend', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-analysis-service-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const pakPath = path.join(root, 'pakchunk0-Windows.pak');
+  createFile(pakPath, 'pak');
+  fs.unlinkSync(pakPath);
+  const { calls, client } = createBackendClient();
+  const service = new AnalysisService({ backendClient: client, filePaths: [pakPath] });
+
+  const result = await service.analyze(pakPath);
+
+  assert.deepEqual(result, {
+    status: 'Error',
+    issues: [{
+      severity: 'error',
+      code: 'container.file_unavailable',
+      message: 'Selected container file is unavailable.',
+    }],
+  });
+  assert.deepEqual(calls.pak, []);
+});
+
 test('detects AES-required issue codes by exact suffix', () => {
   assert.equal(hasAesRequiredIssue({
     issues: [

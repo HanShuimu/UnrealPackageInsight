@@ -13,9 +13,41 @@ const UNSUPPORTED_CONTAINER_RESPONSE = {
   }],
 };
 
-function fileStamp(filePath) {
-  const stat = fs.statSync(filePath);
-  return `${stat.size}:${stat.mtimeMs}`;
+const FILE_UNAVAILABLE_RESPONSE = {
+  status: 'Error',
+  issues: [{
+    severity: 'error',
+    code: 'container.file_unavailable',
+    message: 'Selected container file is unavailable.',
+  }],
+};
+
+function cloneErrorResponse(response) {
+  return {
+    status: response.status,
+    issues: response.issues.map((issue) => ({ ...issue })),
+  };
+}
+
+function isBigIntStatUnsupported(error) {
+  return error instanceof TypeError || error?.code === 'ERR_INVALID_ARG_TYPE';
+}
+
+function formatStatStamp(stat) {
+  const mtime = stat.mtimeNs !== undefined ? stat.mtimeNs : stat.mtimeMs;
+  const ctime = stat.ctimeNs !== undefined ? stat.ctimeNs : stat.ctimeMs;
+  return `${stat.size}:${mtime}:${ctime}`;
+}
+
+async function fileStamp(filePath) {
+  try {
+    return formatStatStamp(await fs.promises.stat(filePath, { bigint: true }));
+  } catch (error) {
+    if (!isBigIntStatUnsupported(error)) {
+      throw error;
+    }
+    return formatStatStamp(await fs.promises.stat(filePath));
+  }
 }
 
 function hasAesRequiredIssue(response) {
@@ -43,18 +75,22 @@ class AnalysisService {
     if (kind === 'utoc' || kind === 'ucas') {
       return this.analyzeIoStore(filePath);
     }
-    return {
-      status: UNSUPPORTED_CONTAINER_RESPONSE.status,
-      issues: UNSUPPORTED_CONTAINER_RESPONSE.issues.map((issue) => ({ ...issue })),
-    };
+    return cloneErrorResponse(UNSUPPORTED_CONTAINER_RESPONSE);
   }
 
   async analyzePak(pakPath) {
     const aesKey = this.aesSession.getKey();
+    let stamp;
+    try {
+      stamp = await fileStamp(pakPath);
+    } catch {
+      return cloneErrorResponse(FILE_UNAVAILABLE_RESPONSE);
+    }
+
     const cacheKey = this.cache.makeKey({
       analysisType: 'pak',
       paths: [pakPath],
-      fileStamp: fileStamp(pakPath),
+      fileStamp: stamp,
       aesKey,
     });
     const cached = this.cache.get(cacheKey);
@@ -76,12 +112,20 @@ class AnalysisService {
       };
     }
 
-    const { utocPath, ucasPath } = selection;
+    const { utocPath, ucasPath, ucasPaths } = selection;
+    const cachePaths = [utocPath, ...ucasPaths];
     const aesKey = this.aesSession.getKey();
+    let stamps;
+    try {
+      stamps = await Promise.all(cachePaths.map((containerPath) => fileStamp(containerPath)));
+    } catch {
+      return cloneErrorResponse(FILE_UNAVAILABLE_RESPONSE);
+    }
+
     const cacheKey = this.cache.makeKey({
       analysisType: 'iostore',
-      paths: [utocPath, ucasPath],
-      fileStamp: `${fileStamp(utocPath)}|${fileStamp(ucasPath)}`,
+      paths: cachePaths,
+      fileStamp: stamps.join('|'),
       aesKey,
     });
     const cached = this.cache.get(cacheKey);
