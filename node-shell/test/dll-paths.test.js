@@ -1,9 +1,9 @@
 const assert = require('node:assert/strict');
-const path = require('node:path');
 const test = require('node:test');
 
 const {
   DEFAULT_ENGINE_ROOT,
+  WINDOWS_PATH_DELIMITER,
   resolveDllPath,
   buildDllSearchPath,
   getEngineWin64BinariesDir,
@@ -51,10 +51,30 @@ test('buildDllSearchPath prepends the DLL directory and engine Win64 binaries', 
     existingPath: 'C:\\Windows\\System32',
   });
 
-  const parts = result.split(path.delimiter);
+  const parts = result.split(WINDOWS_PATH_DELIMITER);
   assert.equal(parts[0], 'C:\\WORKSPACE_UE\\UnrealEngine\\Engine\\Binaries\\Win64\\UnrealPackageInsightBackend');
   assert.equal(parts[1], 'C:\\WORKSPACE_UE\\UnrealEngine\\Engine\\Binaries\\Win64');
   assert.equal(parts[2], 'C:\\Windows\\System32');
+});
+
+test('buildDllSearchPath uses the Windows PATH delimiter for drive-letter paths', () => {
+  assert.equal(WINDOWS_PATH_DELIMITER, ';');
+
+  const dllDirectory = 'C:\\WORKSPACE_UE\\UnrealEngine\\Engine\\Binaries\\Win64\\UnrealPackageInsightBackend';
+  const engineBinaries = 'C:\\WORKSPACE_UE\\UnrealEngine\\Engine\\Binaries\\Win64';
+  const dllPath = `${dllDirectory}\\UnrealPackageInsightBackend.dll`;
+  const result = buildDllSearchPath({
+    dllPath,
+    engineRoot: 'C:\\WORKSPACE_UE\\UnrealEngine',
+    existingPath: ['C:\\Tools\\bin', 'D:\\Sdk\\bin'].join(WINDOWS_PATH_DELIMITER),
+  });
+
+  assert.deepEqual(result.split(WINDOWS_PATH_DELIMITER), [
+    dllDirectory,
+    engineBinaries,
+    'C:\\Tools\\bin',
+    'D:\\Sdk\\bin',
+  ]);
 });
 
 test('buildDllSearchPath dedupes existing PATH entries case-insensitively', () => {
@@ -68,10 +88,10 @@ test('buildDllSearchPath dedupes existing PATH entries case-insensitively', () =
       'c:\\workspace_ue\\unrealengine\\engine\\binaries\\win64\\unrealpackageinsightbackend',
       'C:\\Tools\\bin',
       'c:\\workspace_ue\\unrealengine\\engine\\binaries\\win64',
-    ].join(path.delimiter),
+    ].join(WINDOWS_PATH_DELIMITER),
   });
 
-  const parts = result.split(path.delimiter);
+  const parts = result.split(WINDOWS_PATH_DELIMITER);
   assert.deepEqual(parts, [dllDirectory, engineBinaries, 'C:\\Tools\\bin']);
   assert.equal(parts.filter((part) => part.toLowerCase() === dllDirectory.toLowerCase()).length, 1);
   assert.equal(parts.filter((part) => part.toLowerCase() === engineBinaries.toLowerCase()).length, 1);

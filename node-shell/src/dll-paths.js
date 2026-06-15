@@ -1,6 +1,7 @@
 const path = require('node:path');
 
 const DEFAULT_ENGINE_ROOT = 'C:\\WORKSPACE_UE\\UnrealEngine';
+const WINDOWS_PATH_DELIMITER = ';';
 
 function usageError() {
   return new Error('Usage: node src/index.js <path-to-backend-dll>');
@@ -24,7 +25,7 @@ function buildDllSearchPath({ dllPath, engineRoot = DEFAULT_ENGINE_ROOT, existin
   const dllDirectory = path.win32.dirname(dllPath);
   const engineBinaries = getEngineWin64BinariesDir(engineRoot);
   const additions = [dllDirectory, engineBinaries];
-  const existingParts = existingPath.length > 0 ? existingPath.split(path.delimiter) : [];
+  const existingParts = existingPath.length > 0 ? existingPath.split(WINDOWS_PATH_DELIMITER) : [];
   const seen = new Set();
   const merged = [];
 
@@ -37,11 +38,12 @@ function buildDllSearchPath({ dllPath, engineRoot = DEFAULT_ENGINE_ROOT, existin
     merged.push(part);
   }
 
-  return merged.join(path.delimiter);
+  return merged.join(WINDOWS_PATH_DELIMITER);
 }
 
 module.exports = {
   DEFAULT_ENGINE_ROOT,
+  WINDOWS_PATH_DELIMITER,
   resolveDllPath,
   getEngineWin64BinariesDir,
   buildDllSearchPath,
