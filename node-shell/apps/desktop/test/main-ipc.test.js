@@ -166,7 +166,7 @@ test('startDesktopApp shows an error dialog and quits when startup initializatio
     },
   };
 
-  startDesktopApp({
+  await startDesktopApp({
     app,
     BrowserWindowClass: { getAllWindows: () => [] },
     dialog,
@@ -179,9 +179,6 @@ test('startDesktopApp shows an error dialog and quits when startup initializatio
     },
   });
 
-  await Promise.resolve();
-  await Promise.resolve();
-
   assert.deepEqual(dialogs, [{
     title: 'UnrealPackageInsight failed to start',
     content: 'DLL missing',
@@ -189,4 +186,41 @@ test('startDesktopApp shows an error dialog and quits when startup initializatio
   assert.equal(quitCount, 1);
   assert.equal(handled.has('backend:getInfo'), true);
   assert.equal(appEvents.has('window-all-closed'), true);
+});
+
+test('startDesktopApp catches asynchronous createWindow load failures and quits', async () => {
+  const dialogs = [];
+  let quitCount = 0;
+  const app = {
+    whenReady() {
+      return Promise.resolve();
+    },
+    on() {},
+    quit() {
+      quitCount += 1;
+    },
+  };
+  const ipcMain = {
+    handle() {},
+  };
+  const dialog = {
+    showErrorBox(title, content) {
+      dialogs.push({ title, content });
+    },
+  };
+
+  await startDesktopApp({
+    app,
+    BrowserWindowClass: { getAllWindows: () => [] },
+    dialog,
+    ipcMain,
+    initializeBackendClient: () => ({ getBackendInfo() {} }),
+    createWindow: () => Promise.reject(new Error('renderer missing')),
+  });
+
+  assert.deepEqual(dialogs, [{
+    title: 'UnrealPackageInsight failed to start',
+    content: 'renderer missing',
+  }]);
+  assert.equal(quitCount, 1);
 });

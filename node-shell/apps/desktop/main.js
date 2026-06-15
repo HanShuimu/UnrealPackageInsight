@@ -141,7 +141,7 @@ function registerIpcHandlers(ipcMainModule, handlers) {
 
 const desktopState = createDesktopState();
 
-function createWindow({ BrowserWindowClass = BrowserWindow } = {}) {
+async function createWindow({ BrowserWindowClass = BrowserWindow } = {}) {
   const window = new BrowserWindowClass({
     width: 1280,
     height: 800,
@@ -152,7 +152,7 @@ function createWindow({ BrowserWindowClass = BrowserWindow } = {}) {
     },
   });
 
-  window.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  await window.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   return window;
 }
 
@@ -192,13 +192,15 @@ function startDesktopApp({
   const handlers = createIpcHandlers({ state, dialog: dialogModule });
   registerIpcHandlers(ipcMainModule, handlers);
 
-  appModule.whenReady().then(() => {
+  const startup = appModule.whenReady().then(async () => {
     initializeBackendClientFn({ state });
-    createWindowFn({ BrowserWindowClass });
+    await createWindowFn({ BrowserWindowClass });
 
     appModule.on('activate', () => {
       if (BrowserWindowClass.getAllWindows().length === 0) {
-        createWindowFn({ BrowserWindowClass });
+        createWindowFn({ BrowserWindowClass }).catch((error) => {
+          showStartupErrorAndQuit({ app: appModule, dialog: dialogModule, error });
+        });
       }
     });
   }).catch((error) => {
@@ -210,6 +212,8 @@ function startDesktopApp({
       appModule.quit();
     }
   });
+
+  return startup;
 }
 
 if (app && BrowserWindow && dialog && ipcMain) {
