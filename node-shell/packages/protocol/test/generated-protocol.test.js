@@ -23,16 +23,51 @@ test('commits generated FlatBuffers C++ headers and CommonJS modules', () => {
   }
 });
 
-test('generated CommonJS modules expose lowerCamelCase accessors', () => {
-  const { BackendInfoResponse } = require('../generated/js/upi/v1/backend-info-response.js');
-  const { PakAnalysisResponse } = require('../generated/js/upi/v1/pak-analysis-response.js');
-  const { IoStoreAnalysisResponse } = require('../generated/js/upi/v1/io-store-analysis-response.js');
+test('generated CommonJS barrel exports all root response modules', () => {
   const entrypoint = require('../generated/js/upi/v1.js');
+  const rootModules = [
+    {
+      name: 'BackendInfoResponse',
+      directModule: require('../generated/js/upi/v1/backend-info-response.js'),
+      lowerCamelAccessors: ['schemaVersion', 'backendName'],
+    },
+    {
+      name: 'PakAnalysisResponse',
+      directModule: require('../generated/js/upi/v1/pak-analysis-response.js'),
+      lowerCamelAccessors: ['compressedBlocksLength'],
+    },
+    {
+      name: 'IoStoreAnalysisResponse',
+      directModule: require('../generated/js/upi/v1/io-store-analysis-response.js'),
+      lowerCamelAccessors: ['compressedBlocksLength'],
+    },
+  ];
 
-  assert.equal(typeof BackendInfoResponse.prototype.schemaVersion, 'function');
-  assert.equal(typeof BackendInfoResponse.prototype.backendName, 'function');
-  assert.equal(typeof PakAnalysisResponse.prototype.compressedBlocksLength, 'function');
-  assert.equal(typeof IoStoreAnalysisResponse.prototype.compressedBlocksLength, 'function');
-  assert.equal(entrypoint.IoStoreAnalysisResponse, IoStoreAnalysisResponse);
+  for (const { name, directModule, lowerCamelAccessors } of rootModules) {
+    const RootClass = directModule[name];
+    assert.equal(entrypoint[name], RootClass);
+    assert.equal(typeof RootClass.bufferHasIdentifier, 'function');
+    assert.equal(typeof RootClass[`getRootAs${name}`], 'function');
+    for (const accessor of lowerCamelAccessors) {
+      assert.equal(typeof RootClass.prototype[accessor], 'function');
+    }
+  }
+
+  const tableExports = [
+    'Issue',
+    'IoStoreChunkEntry',
+    'IoStoreCompressedBlockEntry',
+    'IoStoreOverview',
+    'IoStorePackageEntry',
+    'IoStorePartition',
+    'PakCompressedBlockEntry',
+    'PakOverview',
+    'PakPackageEntry',
+  ];
+  for (const name of tableExports) {
+    assert.equal(typeof entrypoint[name], 'function');
+  }
+
   assert.equal(typeof entrypoint.ResponseStatus, 'object');
+  assert.equal(typeof entrypoint.IssueSeverity, 'object');
 });
