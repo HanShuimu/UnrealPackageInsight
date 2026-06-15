@@ -3,6 +3,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
+  DEFAULT_ENGINE_ROOT,
   resolveDllPath,
   buildDllSearchPath,
   getEngineWin64BinariesDir,
@@ -18,16 +19,26 @@ test('resolveDllPath keeps an absolute DLL argument unchanged', () => {
   assert.equal(resolveDllPath(absolutePath), absolutePath);
 });
 
-test('resolveDllPath throws a usage error when the DLL path is missing', () => {
-  assert.throws(
-    () => resolveDllPath(''),
-    /Usage: node src[\\/]index\.js <path-to-backend-dll>/
+test('resolveDllPath throws a usage error when the DLL path is missing or blank', () => {
+  const usagePattern = /Usage: node src[\\/]index\.js <path-to-backend-dll>/;
+
+  assert.throws(() => resolveDllPath(), usagePattern);
+  assert.throws(() => resolveDllPath(undefined), usagePattern);
+  assert.throws(() => resolveDllPath(''), usagePattern);
+  assert.throws(() => resolveDllPath('   '), usagePattern);
+});
+
+test('getEngineWin64BinariesDir resolves from an explicit engine root', () => {
+  assert.equal(
+    getEngineWin64BinariesDir('C:\\WORKSPACE_UE\\UnrealEngine'),
+    'C:\\WORKSPACE_UE\\UnrealEngine\\Engine\\Binaries\\Win64'
   );
 });
 
 test('getEngineWin64BinariesDir resolves from the default engine root', () => {
+  assert.equal(DEFAULT_ENGINE_ROOT, 'C:\\WORKSPACE_UE\\UnrealEngine');
   assert.equal(
-    getEngineWin64BinariesDir('C:\\WORKSPACE_UE\\UnrealEngine'),
+    getEngineWin64BinariesDir(),
     'C:\\WORKSPACE_UE\\UnrealEngine\\Engine\\Binaries\\Win64'
   );
 });
