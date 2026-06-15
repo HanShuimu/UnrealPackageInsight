@@ -1,0 +1,18 @@
+namespace upi.v1;
+
+enum ResponseStatus : byte {
+  Ok = 0,
+  Error = 1
+}
+
+enum IssueSeverity : byte {
+  Info = 0,
+  Warning = 1,
+  Error = 2
+}
+
+table Issue {
+  severity: IssueSeverity;
+  code: string;
+  message: string;
+}

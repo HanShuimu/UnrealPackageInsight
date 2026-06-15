@@ -1,0 +1,92 @@
+include "upi_common.fbs";
+
+namespace upi.v1;
+
+table IoStoreOverview {
+  utocPath: string;
+  containerBasePath: string;
+  containerId: ulong;
+  tocVersion: uint;
+  tocEntryCount: uint;
+  compressionBlockCount: uint;
+  compressionBlockSize: uint;
+  partitionCount: uint;
+  partitionSize: ulong;
+  containerFlags: uint;
+  encryptionKeyGuid: string;
+  directoryIndexSize: uint;
+  indexed: bool;
+  partialListing: bool;
+}
+
+table IoStorePartition {
+  partitionIndex: uint;
+  ucasPath: string;
+  size: ulong;
+}
+
+table IoStorePackageEntry {
+  packagePath: string;
+  packageId: ulong;
+  firstChunkIndex: uint;
+  chunkCount: uint;
+  firstPartitionIndex: uint;
+  firstOffset: ulong;
+  size: ulong;
+  compressedSize: ulong;
+  diskSize: ulong;
+  order: uint;
+  hasPath: bool;
+}
+
+table IoStoreChunkEntry {
+  packageIndex: uint;
+  packagePath: string;
+  tocEntryIndex: uint;
+  chunkId: string;
+  chunkType: string;
+  packageId: ulong;
+  chunkIndex: uint;
+  bulkDataCookedIndex: uint;
+  logicalOffset: ulong;
+  offset: ulong;
+  ucasOffset: ulong;
+  size: ulong;
+  compressedSize: ulong;
+  diskSize: ulong;
+  compression: string;
+  firstBlockIndex: uint;
+  blockCount: uint;
+  partitionIndex: uint;
+  order: uint;
+  metaFlags: uint;
+  containerFlags: uint;
+  hash: string;
+  hasPath: bool;
+}
+
+table IoStoreCompressedBlockEntry {
+  blockIndex: uint;
+  ownerTocEntryIndex: uint;
+  partitionIndex: uint;
+  offset: ulong;
+  ucasOffset: ulong;
+  compressedSize: uint;
+  diskSize: uint;
+  uncompressedSize: uint;
+  compression: string;
+}
+
+table IoStoreAnalysisResponse {
+  schemaVersion: uint;
+  status: ResponseStatus;
+  issues: [Issue];
+  overview: IoStoreOverview;
+  partitions: [IoStorePartition];
+  packages: [IoStorePackageEntry];
+  chunks: [IoStoreChunkEntry];
+  compressedBlocks: [IoStoreCompressedBlockEntry];
+}
+
+root_type IoStoreAnalysisResponse;
+file_identifier "UPIO";

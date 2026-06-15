@@ -1,0 +1,16 @@
+include "upi_common.fbs";
+
+namespace upi.v1;
+
+table BackendInfoResponse {
+  schemaVersion: uint;
+  status: ResponseStatus;
+  issues: [Issue];
+  backendName: string;
+  backendVersion: string;
+  unrealVersion: string;
+  protocolVersion: uint;
+}
+
+root_type BackendInfoResponse;
+file_identifier "UPBI";
