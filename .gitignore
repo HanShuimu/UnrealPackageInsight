@@ -82,3 +82,6 @@ node-shell/node_modules/
 
 # Local spike logs and copied binary outputs
 artifacts/
+
+# Worktrees
+.worktrees
