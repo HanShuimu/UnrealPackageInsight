@@ -73,3 +73,12 @@ Plugins/**/Intermediate/*
 
 # Cache files for the editor to use
 DerivedDataCache/*
+
+# Node shell dependencies
+node-shell/node_modules/
+
+# Local brainstorming companion state
+.superpowers/
+
+# Local spike logs and copied binary outputs
+artifacts/
