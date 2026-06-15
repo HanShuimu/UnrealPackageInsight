@@ -2,6 +2,7 @@
 
 const state = {
   activeTabId: '',
+  analysisRequestId: 0,
   backendInfo: null,
   pendingAesFilePath: '',
   selectedFilePath: '',
@@ -185,6 +186,11 @@ function clearSelectedFile() {
 }
 
 async function analyzeFile(filePath) {
+  const requestId = ++state.analysisRequestId;
+  if (state.pendingAesFilePath && state.pendingAesFilePath !== filePath) {
+    closeAesDialog('stale');
+  }
+
   state.selectedFilePath = filePath;
   elements.selectedFile.textContent = filePath || 'None';
   clearTabs();
@@ -193,6 +199,10 @@ async function analyzeFile(filePath) {
 
   try {
     const result = await window.upi.analyze(filePath);
+    if (!isCurrentAnalysis(filePath, requestId)) {
+      return;
+    }
+
     if (needsAesKey(result)) {
       renderAnalysis(result);
       promptForAesKey(filePath);
@@ -203,15 +213,32 @@ async function analyzeFile(filePath) {
     renderAnalysis(result);
     setStatus('Analysis ready');
   } catch (error) {
+    if (!isCurrentAnalysis(filePath, requestId)) {
+      return;
+    }
+
     renderAnalysis(createErrorResult('renderer.analysis_failed', error));
     setStatus('Analysis failed');
   }
+}
+
+function isCurrentAnalysis(filePath, requestId) {
+  return state.selectedFilePath === filePath && state.analysisRequestId === requestId;
 }
 
 function needsAesKey(result) {
   return Boolean(result?.issues?.some((issue) => (
     String(issue?.code || '').endsWith('.aes_key_required')
   )));
+}
+
+function hasIssueCode(result, code) {
+  return Boolean(result?.issues?.some((issue) => String(issue?.code || '') === code));
+}
+
+function getFirstIssueMessage(result, fallback) {
+  const issue = Array.isArray(result?.issues) ? result.issues[0] : null;
+  return issue?.message || fallback;
 }
 
 function promptForAesKey(filePath) {
@@ -226,6 +253,13 @@ function promptForAesKey(filePath) {
     elements.aesDialog.setAttribute('open', '');
   }
   elements.aesKey.focus();
+}
+
+function closeAesDialog(reason) {
+  state.pendingAesFilePath = '';
+  if (elements.aesDialog.open) {
+    elements.aesDialog.close(reason);
+  }
 }
 
 async function handleAesSubmit(event) {
@@ -243,8 +277,17 @@ async function handleAesSubmit(event) {
 
   try {
     const result = await window.upi.submitAesKeyAndRetry(filePath, aesKey);
-    state.pendingAesFilePath = '';
-    elements.aesDialog.close('submit');
+    if (state.selectedFilePath !== filePath) {
+      return;
+    }
+
+    if (hasIssueCode(result, 'aes.invalid_key')) {
+      elements.aesMessage.textContent = getFirstIssueMessage(result, 'Invalid AES key.');
+      setStatus('AES key invalid');
+      return;
+    }
+
+    closeAesDialog('submit');
     renderAnalysis(result);
     if (needsAesKey(result)) {
       promptForAesKey(filePath);
@@ -253,8 +296,11 @@ async function handleAesSubmit(event) {
       setStatus('Analysis ready');
     }
   } catch (error) {
-    state.pendingAesFilePath = '';
-    elements.aesDialog.close('error');
+    if (state.selectedFilePath !== filePath) {
+      return;
+    }
+
+    closeAesDialog('error');
     renderAnalysis(createErrorResult('renderer.aes_retry_failed', error));
     setStatus('AES retry failed');
   } finally {

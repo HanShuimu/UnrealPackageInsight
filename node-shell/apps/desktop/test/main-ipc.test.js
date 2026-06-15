@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const {
+  createWindow,
   createDesktopState,
   createIpcHandlers,
   startDesktopApp,
@@ -137,6 +138,28 @@ test('analysis:submitAesKeyAndRetry stores valid AES keys, retries, and reports 
   });
   assert.equal(state.aesSession.getKey(), '');
   assert.equal(cleared, true);
+});
+
+test('createWindow sets a minimum size that matches the renderer shell constraints', async () => {
+  const createdWindows = [];
+  class FakeBrowserWindow {
+    constructor(options) {
+      this.options = options;
+      this.loadedFile = '';
+      createdWindows.push(this);
+    }
+
+    async loadFile(filePath) {
+      this.loadedFile = filePath;
+    }
+  }
+
+  const window = await createWindow({ BrowserWindowClass: FakeBrowserWindow });
+
+  assert.equal(window, createdWindows[0]);
+  assert.equal(window.options.minWidth, 760);
+  assert.equal(window.options.minHeight, 560);
+  assert.match(window.loadedFile, /renderer[\\/]index\.html$/);
 });
 
 test('startDesktopApp shows an error dialog and quits when startup initialization fails', async () => {
