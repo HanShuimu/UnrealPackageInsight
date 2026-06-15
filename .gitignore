@@ -79,6 +79,7 @@ node-shell/node_modules/
 
 # Local brainstorming companion state
 .superpowers/
+.worktrees/
 
 # Local spike logs and copied binary outputs
 artifacts/
