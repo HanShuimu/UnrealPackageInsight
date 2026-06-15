@@ -12,6 +12,24 @@ $ProtocolDir = Join-Path $RepoRoot "node-shell\packages\protocol"
 $CppOut = Join-Path $ProtocolDir "generated\cpp"
 $TsOut = Join-Path $ProtocolDir "generated\ts"
 $JsOut = Join-Path $ProtocolDir "generated\js"
+$GeneratedOut = Join-Path $ProtocolDir "generated"
+
+function ConvertTo-LfLineEndings {
+	param(
+		[string]$Root
+	)
+
+	$Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+	$GeneratedFiles = @(Get-ChildItem -Path $Root -Recurse -File)
+	foreach ($File in $GeneratedFiles) {
+		$Bytes = [System.IO.File]::ReadAllBytes($File.FullName)
+		$Text = $Utf8NoBom.GetString($Bytes)
+		$Normalized = $Text.Replace("`r`n", "`n").Replace("`r", "`n")
+		if ($Normalized -ne $Text) {
+			[System.IO.File]::WriteAllText($File.FullName, $Normalized, $Utf8NoBom)
+		}
+	}
+}
 
 if ([string]::IsNullOrWhiteSpace($Flatc)) {
 	$Command = Get-Command flatc -ErrorAction SilentlyContinue
@@ -78,5 +96,7 @@ $TscArgs = @(
 if ($LASTEXITCODE -ne 0) {
 	throw "TypeScript compilation failed for generated protocol bindings."
 }
+
+ConvertTo-LfLineEndings -Root $GeneratedOut
 
 Write-Output "[OK] Generated FlatBuffers bindings in $ProtocolDir\generated"
