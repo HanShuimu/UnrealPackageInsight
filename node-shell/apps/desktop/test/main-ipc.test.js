@@ -140,6 +140,38 @@ test('analysis:submitAesKeyAndRetry stores valid AES keys, retries, and reports 
   assert.equal(cleared, true);
 });
 
+test('analysis:submitAesKeyAndRetry clears keys rejected by backend AES validation', async () => {
+  const state = createDesktopState({ backendClient: { getBackendInfo() {} } });
+  state.analysisService = {
+    async analyze() {
+      return {
+        status: 'Error',
+        issues: [{
+          severity: 'error',
+          code: 'pak.aes_key_invalid',
+          message: 'Pak analysis failed with the provided AES key.',
+        }],
+      };
+    },
+  };
+  const handlers = createIpcHandlers({ state });
+
+  const result = await handlers.submitAesKeyAndRetry(
+    'C:\\Game\\Content\\Paks\\pakchunk0-Windows.pak',
+    'abcdefabcdefabcdefabcdefabcdefab',
+  );
+
+  assert.equal(state.aesSession.getKey(), '');
+  assert.deepEqual(result, {
+    status: 'Error',
+    issues: [{
+      severity: 'error',
+      code: 'pak.aes_key_invalid',
+      message: 'Pak analysis failed with the provided AES key.',
+    }],
+  });
+});
+
 test('createWindow sets a minimum size that matches the renderer shell constraints', async () => {
   const createdWindows = [];
   class FakeBrowserWindow {

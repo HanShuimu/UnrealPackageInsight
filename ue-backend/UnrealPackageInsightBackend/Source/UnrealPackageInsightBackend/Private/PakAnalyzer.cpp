@@ -10,10 +10,14 @@
 #include "Misc/AES.h"
 #include "Misc/CommandLine.h"
 #include "Misc/ConfigCacheIni.h"
+#include "Misc/CoreDelegates.h"
 #include "Misc/Guid.h"
 #include "Misc/Paths.h"
+#include "Misc/SecureHash.h"
+#include "Serialization/Archive.h"
 #include "String/BytesToHex.h"
 #include "Templates/RefCounting.h"
+#include "Templates/UniquePtr.h"
 
 namespace
 {
@@ -99,6 +103,109 @@ namespace
 		return BytesToHexLower(Hash, 20);
 	}
 
+	int32 UPI_HexValue(TCHAR Char)
+	{
+		if (Char >= TEXT('0') && Char <= TEXT('9'))
+		{
+			return Char - TEXT('0');
+		}
+		if (Char >= TEXT('a') && Char <= TEXT('f'))
+		{
+			return Char - TEXT('a') + 10;
+		}
+		if (Char >= TEXT('A') && Char <= TEXT('F'))
+		{
+			return Char - TEXT('A') + 10;
+		}
+		return -1;
+	}
+
+	bool UPI_ParseAesKey(const FString& AesKey, FAES::FAESKey& OutKey)
+	{
+		OutKey.Reset();
+
+		FString Hex = AesKey.TrimStartAndEnd();
+		if (Hex.StartsWith(TEXT("0x"), ESearchCase::IgnoreCase))
+		{
+			Hex.RightChopInline(2, EAllowShrinking::No);
+		}
+
+		const int32 KeyByteCount = Hex.Len() / 2;
+		if (Hex.IsEmpty() || Hex.Len() % 2 != 0 || (KeyByteCount != 16 && KeyByteCount != FAES::FAESKey::KeySize))
+		{
+			return false;
+		}
+
+		for (int32 Index = 0; Index < KeyByteCount; ++Index)
+		{
+			const int32 High = UPI_HexValue(Hex[Index * 2]);
+			const int32 Low = UPI_HexValue(Hex[Index * 2 + 1]);
+			if (High < 0 || Low < 0)
+			{
+				return false;
+			}
+
+			OutKey.Key[Index] = static_cast<uint8>((High << 4) | Low);
+		}
+
+		return OutKey.IsValid();
+	}
+
+	bool UPI_ReadPakIndexData(const FString& PakPath, const FPakInfo& PakInfo, TArray<uint8>& OutIndexData)
+	{
+		if (PakInfo.IndexOffset < 0 || PakInfo.IndexSize <= 0 || !IntFitsIn<int32>(PakInfo.IndexSize))
+		{
+			return false;
+		}
+
+		TUniquePtr<FArchive> Reader(IFileManager::Get().CreateFileReader(*PakPath));
+		if (!Reader.IsValid())
+		{
+			return false;
+		}
+
+		const int64 TotalSize = Reader->TotalSize();
+		if (PakInfo.IndexOffset > TotalSize || PakInfo.IndexSize > TotalSize - PakInfo.IndexOffset)
+		{
+			return false;
+		}
+
+		Reader->Seek(PakInfo.IndexOffset);
+		OutIndexData.SetNum(static_cast<int32>(PakInfo.IndexSize));
+		Reader->Serialize(OutIndexData.GetData(), PakInfo.IndexSize);
+		return !Reader->IsError();
+	}
+
+	bool UPI_CanDecryptPakIndexWithKey(const FString& PakPath, const FPakInfo& PakInfo, const FAES::FAESKey& Key)
+	{
+		TArray<uint8> IndexData;
+		if (!UPI_ReadPakIndexData(PakPath, PakInfo, IndexData))
+		{
+			return false;
+		}
+
+		FAES::DecryptData(IndexData.GetData(), IndexData.Num(), Key);
+
+		FSHAHash ComputedHash;
+		FSHA1::HashBuffer(IndexData.GetData(), IndexData.Num(), ComputedHash.Hash);
+		return ComputedHash == PakInfo.IndexHash;
+	}
+
+	void UPI_RegisterPakAesKey(const FGuid& EncryptionKeyGuid, const FAES::FAESKey& Key)
+	{
+		FCoreDelegates::GetRegisterEncryptionKeyMulticastDelegate().Broadcast(FGuid(), Key);
+		if (EncryptionKeyGuid.IsValid())
+		{
+			FCoreDelegates::GetRegisterEncryptionKeyMulticastDelegate().Broadcast(EncryptionKeyGuid, Key);
+			return;
+		}
+
+		FCoreDelegates::GetPakEncryptionKeyDelegate().BindLambda([Key](uint8 OutKey[FAES::FAESKey::KeySize])
+		{
+			FMemory::Memcpy(OutKey, Key.Key, FAES::FAESKey::KeySize);
+		});
+	}
+
 	void UPI_FillOverviewFromPak(const FPakFile& PakFile, FUpiPakAnalysis& OutAnalysis)
 	{
 		const FPakInfo& PakInfo = PakFile.GetInfo();
@@ -157,20 +264,33 @@ bool UPI_AnalyzePakFile(const FString& PakPath, const FString& AesKey, FUpiPakAn
 		OutAnalysis.bHasFullDirectoryIndex = false;
 		OutAnalysis.bPartialListing = true;
 
-		if (AesKey.IsEmpty())
+		if (AesKey.TrimStartAndEnd().IsEmpty())
 		{
 			OutAnalysis.Issues.Add(TEXT("pak.aes_key_required"));
 			return false;
 		}
 
-		OutAnalysis.Issues.Add(TEXT("pak.aes_key_invalid"));
-		return false;
+		FAES::FAESKey ParsedKey;
+		if (!UPI_ParseAesKey(AesKey, ParsedKey))
+		{
+			OutAnalysis.Issues.Add(TEXT("pak.aes_key_invalid"));
+			return false;
+		}
+
+		const FPakInfo& TrailerInfo = TrailerOnlyPak->GetInfo();
+		if (!UPI_CanDecryptPakIndexWithKey(PakPath, TrailerInfo, ParsedKey))
+		{
+			OutAnalysis.Issues.Add(TEXT("pak.aes_key_invalid"));
+			return false;
+		}
+
+		UPI_RegisterPakAesKey(TrailerInfo.EncryptionKeyGuid, ParsedKey);
 	}
 
 	TRefCountPtr<FPakFile> PakFile = MakeRefCount<FPakFile>(&PlatformFile, *PakPath, false, true);
 	if (!PakFile.IsValid() || !PakFile->IsValid())
 	{
-		OutAnalysis.Issues.Add(TEXT("pak.invalid"));
+		OutAnalysis.Issues.Add(OutAnalysis.bIndexEncrypted ? TEXT("pak.index_corrupted") : TEXT("pak.invalid"));
 		return false;
 	}
 

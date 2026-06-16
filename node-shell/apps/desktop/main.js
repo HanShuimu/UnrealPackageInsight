@@ -52,6 +52,13 @@ function cloneResponse(response) {
   };
 }
 
+function hasBackendAesRejection(response) {
+  return Boolean(response?.issues?.some((issue) => {
+    const code = String(issue?.code || '');
+    return code.endsWith('.aes_key_invalid') || code.endsWith('.aes_key_required');
+  }));
+}
+
 function createDesktopState({ backendClient = null, aesSession = new AesKeySession() } = {}) {
   return {
     aesSession,
@@ -119,7 +126,11 @@ function createIpcHandlers({
         return createValidationErrorResponse(error);
       }
 
-      return state.analysisService.analyze(filePath);
+      const result = await state.analysisService.analyze(filePath);
+      if (hasBackendAesRejection(result)) {
+        state.aesSession.clear();
+      }
+      return result;
     },
 
     async clearAesKey() {

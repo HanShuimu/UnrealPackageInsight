@@ -324,6 +324,66 @@ test('invalid AES key retry keeps the dialog open with the validation issue', as
   assert.equal(message.textContent, 'AES key must be 32 or 64 hex characters');
 });
 
+test('backend Pak AES retry failure keeps the dialog open with the backend issue', async () => {
+  const { context, document } = await loadRenderer({
+    analyze: async () => aesRequiredResult(),
+    submitAesKeyAndRetry: async () => ({
+      status: 'Error',
+      issues: [{
+        severity: 'error',
+        code: 'pak.aes_key_invalid',
+        message: 'Pak analysis failed with the provided AES key.',
+      }],
+    }),
+  });
+  const dialog = document.getElementById('aes-dialog');
+  const message = document.getElementById('aes-message');
+  await context.analyzeFile('C:\\Paks\\A.pak');
+  document.getElementById('aes-key').value = 'abcdefabcdefabcdefabcdefabcdefab';
+
+  await context.handleAesSubmit({ preventDefault() {} });
+
+  assert.equal(dialog.open, true);
+  assert.deepEqual(dialog.closeCalls, []);
+  assert.equal(message.textContent, 'Pak analysis failed with the provided AES key.');
+  assert.equal(document.getElementById('status').textContent, 'AES key invalid');
+  const contentText = collectText(document.getElementById('content'));
+  assert.match(contentText, /pak\.aes_key_invalid/);
+  assert.doesNotMatch(contentText, /Analysis ready/);
+});
+
+test('backend IoStore AES retry requirement keeps the dialog open with the backend issue', async () => {
+  const { context, document } = await loadRenderer({
+    analyze: async () => ({
+      status: 'Error',
+      issues: [{
+        severity: 'error',
+        code: 'iostore.aes_key_required',
+        message: 'IoStore container is encrypted and requires an AES key.',
+      }],
+    }),
+    submitAesKeyAndRetry: async () => ({
+      status: 'Error',
+      issues: [{
+        severity: 'error',
+        code: 'iostore.aes_key_required',
+        message: 'IoStore container still requires an AES key.',
+      }],
+    }),
+  });
+  const dialog = document.getElementById('aes-dialog');
+  const message = document.getElementById('aes-message');
+  await context.analyzeFile('C:\\Paks\\global.utoc');
+  document.getElementById('aes-key').value = 'abcdefabcdefabcdefabcdefabcdefab';
+
+  await context.handleAesSubmit({ preventDefault() {} });
+
+  assert.equal(dialog.open, true);
+  assert.deepEqual(dialog.closeCalls, []);
+  assert.equal(message.textContent, 'IoStore container still requires an AES key.');
+  assert.equal(document.getElementById('status').textContent, 'AES key required');
+});
+
 test('AES retry result does not overwrite the panel after selecting another file', async () => {
   const retry = deferred();
   const calls = [];

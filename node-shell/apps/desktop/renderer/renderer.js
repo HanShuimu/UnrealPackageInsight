@@ -232,6 +232,16 @@ function needsAesKey(result) {
   )));
 }
 
+function hasAesKeyInvalidIssue(result) {
+  return Boolean(result?.issues?.some((issue) => (
+    String(issue?.code || '').endsWith('.aes_key_invalid')
+  )));
+}
+
+function hasAesRetryIssue(result) {
+  return hasIssueCode(result, 'aes.invalid_key') || hasAesKeyInvalidIssue(result) || needsAesKey(result);
+}
+
 function hasIssueCode(result, code) {
   return Boolean(result?.issues?.some((issue) => String(issue?.code || '') === code));
 }
@@ -262,6 +272,25 @@ function closeAesDialog(reason) {
   }
 }
 
+function keepAesDialogOpenForIssue(filePath, result) {
+  state.pendingAesFilePath = filePath;
+  elements.aesMessage.textContent = getFirstIssueMessage(result, 'Invalid AES key.');
+
+  if (!elements.aesDialog.open) {
+    if (typeof elements.aesDialog.showModal === 'function') {
+      elements.aesDialog.showModal();
+    } else {
+      elements.aesDialog.setAttribute('open', '');
+    }
+  }
+
+  if (needsAesKey(result)) {
+    setStatus('AES key required');
+    return;
+  }
+  setStatus('AES key invalid');
+}
+
 async function handleAesSubmit(event) {
   event.preventDefault();
   const filePath = state.pendingAesFilePath;
@@ -281,9 +310,9 @@ async function handleAesSubmit(event) {
       return;
     }
 
-    if (hasIssueCode(result, 'aes.invalid_key')) {
-      elements.aesMessage.textContent = getFirstIssueMessage(result, 'Invalid AES key.');
-      setStatus('AES key invalid');
+    if (hasAesRetryIssue(result)) {
+      renderAnalysis(result);
+      keepAesDialogOpenForIssue(filePath, result);
       return;
     }
 
