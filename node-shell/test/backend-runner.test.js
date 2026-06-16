@@ -63,7 +63,28 @@ function createFakeKoffi() {
     calls,
     load(dllPath) {
       calls.push(`load:${dllPath}`);
+      if (dllPath === 'kernel32.dll') {
+        return {
+          func(signature) {
+            calls.push(signature);
+            return (flags, moduleName, outHandle) => {
+              calls.push(`pin:${flags}:${moduleName}`);
+              outHandle[0] = 'backend-hmodule';
+              return true;
+            };
+          },
+        };
+      }
+
       return fakeLibrary;
+    },
+    opaque() {
+      calls.push('opaque');
+      return 'opaque';
+    },
+    pointer(name, type) {
+      calls.push(`pointer:${name}:${type}`);
+      return 'hmodule-pointer';
     },
   };
 }
@@ -80,6 +101,11 @@ test('runBackendSmoke loads the DLL and prints V1 backend info', () => {
 
   assert.deepEqual(fakeKoffi.calls, [
     'load:C:\\backend\\UnrealPackageInsightBackend.dll',
+    'load:kernel32.dll',
+    'opaque',
+    'pointer:HMODULE:opaque',
+    'bool __stdcall GetModuleHandleExW(uint32_t dwFlags, const char16_t *lpModuleName, _Out_ HMODULE *phModule)',
+    'pin:1:C:\\backend\\UnrealPackageInsightBackend.dll',
     'int UPI_GetBackendInfoV1(void*, int, void*)',
     'int UPI_AnalyzePakV1(str, str, void*, int, void*)',
     'int UPI_AnalyzeIoStoreV1(str, str, str, void*, int, void*)',

@@ -19,7 +19,8 @@ public class UnrealPackageInsightBackend : ModuleRules
 		PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"Core"
+				"Core",
+				"PakFile"
 			}
 		);
 	}

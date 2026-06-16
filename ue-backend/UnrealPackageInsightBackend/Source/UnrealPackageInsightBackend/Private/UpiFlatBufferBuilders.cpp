@@ -2,6 +2,7 @@
 
 #include "UnrealPackageInsightBackend.h"
 
+#include "Containers/StringConv.h"
 #include "HAL/UnrealMemory.h"
 #include "Math/NumericLimits.h"
 #include "upi_backend_info_generated.h"
@@ -29,6 +30,62 @@ namespace
 	{
 		return Value != nullptr ? Value : "";
 	}
+
+	flatbuffers::Offset<flatbuffers::String> UPI_CreateString(flatbuffers::FlatBufferBuilder& Builder, const FString& Value)
+	{
+		FTCHARToUTF8 Converted(*Value);
+		return Builder.CreateString(Converted.Get(), Converted.Length());
+	}
+
+	upi::v1::IssueSeverity UPI_IssueSeverityForCode(const FString& IssueCode, bool bSuccess)
+	{
+		if (!bSuccess ||
+			IssueCode == TEXT("pak.path_required") ||
+			IssueCode == TEXT("pak.file_not_found") ||
+			IssueCode == TEXT("pak.invalid") ||
+			IssueCode == TEXT("pak.aes_key_required") ||
+			IssueCode == TEXT("pak.aes_key_invalid") ||
+			IssueCode == TEXT("pak.index_corrupted"))
+		{
+			return upi::v1::IssueSeverity_Error;
+		}
+
+		return upi::v1::IssueSeverity_Warning;
+	}
+
+	const TCHAR* UPI_IssueMessageForCode(const FString& IssueCode)
+	{
+		if (IssueCode == TEXT("pak.path_required"))
+		{
+			return TEXT("Pak path is required.");
+		}
+		if (IssueCode == TEXT("pak.file_not_found"))
+		{
+			return TEXT("Pak file was not found.");
+		}
+		if (IssueCode == TEXT("pak.invalid"))
+		{
+			return TEXT("Pak file could not be opened as a valid UE pak.");
+		}
+		if (IssueCode == TEXT("pak.aes_key_required"))
+		{
+			return TEXT("Pak index is encrypted and requires an AES key before it can be analyzed.");
+		}
+		if (IssueCode == TEXT("pak.aes_key_invalid"))
+		{
+			return TEXT("Encrypted pak index analysis with the provided AES key is not available or failed.");
+		}
+		if (IssueCode == TEXT("pak.partial_listing"))
+		{
+			return TEXT("Pak index did not expose filenames for every entry.");
+		}
+		if (IssueCode == TEXT("pak.index_corrupted"))
+		{
+			return TEXT("Pak index could not be loaded.");
+		}
+
+		return *IssueCode;
+	}
 }
 
 TArray<uint8> UPI_BuildBackendInfoResponse()
@@ -48,63 +105,89 @@ TArray<uint8> UPI_BuildBackendInfoResponse()
 	return UPI_CopyBuilderBytes(Builder);
 }
 
-TArray<uint8> UPI_BuildPakStubResponse(const char* PakPathUtf8, const char* AesKeyUtf8OrNull)
+TArray<uint8> UPI_BuildPakResponseFromAnalysis(const FUpiPakAnalysis& Analysis, bool bSuccess)
 {
-	(void)AesKeyUtf8OrNull;
-
 	flatbuffers::FlatBufferBuilder Builder;
 
-	const auto Overview = upi::v1::CreatePakOverviewDirect(
+	const auto PakPath = UPI_CreateString(Builder, Analysis.PakPath);
+	const auto MountPoint = UPI_CreateString(Builder, Analysis.MountPoint);
+	const auto EncryptionKeyGuid = UPI_CreateString(Builder, Analysis.EncryptionKeyGuid);
+	const auto Overview = upi::v1::CreatePakOverview(
 		Builder,
-		UPI_NonNullUtf8(PakPathUtf8),
-		"/Game/",
-		0,
-		0,
-		false,
-		"",
-		true,
-		false,
-		1,
-		1);
+		PakPath,
+		MountPoint,
+		Analysis.PakVersion,
+		Analysis.PakSize,
+		Analysis.bIndexEncrypted,
+		EncryptionKeyGuid,
+		Analysis.bHasFullDirectoryIndex,
+		Analysis.bPartialListing,
+		static_cast<uint32>(Analysis.Packages.Num()),
+		static_cast<uint32>(Analysis.CompressedBlocks.Num()));
+
+	std::vector<flatbuffers::Offset<upi::v1::Issue>> Issues;
+	Issues.reserve(Analysis.Issues.Num());
+	for (const FString& IssueCode : Analysis.Issues)
+	{
+		const auto Code = UPI_CreateString(Builder, IssueCode);
+		const auto Message = UPI_CreateString(Builder, UPI_IssueMessageForCode(IssueCode));
+		Issues.push_back(upi::v1::CreateIssue(
+			Builder,
+			UPI_IssueSeverityForCode(IssueCode, bSuccess),
+			Code,
+			Message));
+	}
 
 	std::vector<flatbuffers::Offset<upi::v1::PakPackageEntry>> Packages;
-	Packages.push_back(upi::v1::CreatePakPackageEntryDirect(
-		Builder,
-		UPI_StubPackagePath,
-		"/Game/",
-		0,
-		0,
-		1024,
-		512,
-		128,
-		"Zlib",
-		1,
-		65536,
-		1,
-		0,
-		false,
-		0,
-		0,
-		"",
-		true));
+	Packages.reserve(Analysis.Packages.Num());
+	for (const FUpiPakPackageRecord& Package : Analysis.Packages)
+	{
+		const auto PackagePath = UPI_CreateString(Builder, Package.PackagePath);
+		const auto PackageMountPoint = UPI_CreateString(Builder, Package.MountPoint);
+		const auto Compression = UPI_CreateString(Builder, Package.Compression);
+		const auto Hash = UPI_CreateString(Builder, Package.Hash);
+		Packages.push_back(upi::v1::CreatePakPackageEntry(
+			Builder,
+			PackagePath,
+			PackageMountPoint,
+			Package.Offset,
+			Package.PayloadOffset,
+			Package.Size,
+			Package.CompressedSize,
+			Package.RecordSize,
+			Compression,
+			Package.CompressionMethodIndex,
+			Package.CompressionBlockSize,
+			Package.CompressionBlockCount,
+			Package.FirstCompressedBlockIndex,
+			Package.bRelativeBlockOffsets,
+			Package.Order,
+			Package.Flags,
+			Hash,
+			Package.bHasPath));
+	}
 
 	std::vector<flatbuffers::Offset<upi::v1::PakCompressedBlockEntry>> CompressedBlocks;
-	CompressedBlocks.push_back(upi::v1::CreatePakCompressedBlockEntry(
-		Builder,
-		0,
-		0,
-		0,
-		512,
-		512,
-		512,
-		0,
-		512));
+	CompressedBlocks.reserve(Analysis.CompressedBlocks.Num());
+	for (const FUpiPakCompressedBlockRecord& Block : Analysis.CompressedBlocks)
+	{
+		CompressedBlocks.push_back(upi::v1::CreatePakCompressedBlockEntry(
+			Builder,
+			Block.PackageIndex,
+			Block.BlockIndex,
+			Block.CompressedStart,
+			Block.CompressedEnd,
+			Block.CompressedSize,
+			Block.DiskSize,
+			Block.PhysicalStart,
+			Block.PhysicalEnd));
+	}
 
 	const auto Response = upi::v1::CreatePakAnalysisResponseDirect(
 		Builder,
 		UPI_SchemaVersion,
-		upi::v1::ResponseStatus_Ok,
-		nullptr,
+		bSuccess ? upi::v1::ResponseStatus_Ok : upi::v1::ResponseStatus_Error,
+		&Issues,
 		Overview,
 		&Packages,
 		&CompressedBlocks);
