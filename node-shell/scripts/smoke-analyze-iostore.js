@@ -89,6 +89,7 @@ function assertNonPackageChunksStayOutOfPackages(response, label) {
     'ExternalFile',
     'DerivedData',
     'EditorDerivedData',
+    'PackageResource',
     'ScriptObjects',
   ]);
   const nonPackageChunk = response.chunks.find((chunk) => nonPackageTypes.has(chunk.chunkType));

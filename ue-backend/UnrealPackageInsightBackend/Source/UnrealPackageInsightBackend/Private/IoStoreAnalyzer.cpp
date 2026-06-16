@@ -190,8 +190,9 @@ namespace
 		case EIoChunkType::OptionalBulkData:
 		case EIoChunkType::MemoryMappedBulkData:
 		case EIoChunkType::PackageStoreEntry:
-		case EIoChunkType::PackageResource:
 			return true;
+		// PackageResource chunk ids encode FName comparison index/number, not FPackageId.
+		case EIoChunkType::PackageResource:
 		default:
 			return false;
 		}
