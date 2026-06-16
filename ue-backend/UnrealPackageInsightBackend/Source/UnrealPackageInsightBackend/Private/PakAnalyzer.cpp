@@ -252,7 +252,7 @@ bool UPI_AnalyzePakFile(const FString& PakPath, const FString& AesKey, FUpiPakAn
 			BlockRecord.CompressedSize = CompressedSize;
 			BlockRecord.DiskSize = PackageWithBlocks.bEncrypted ? Align(CompressedSize, static_cast<uint64>(FAES::AESBlockSize)) : CompressedSize;
 			BlockRecord.PhysicalStart = PhysicalOffsetBase + CompressedStart;
-			BlockRecord.PhysicalEnd = PhysicalOffsetBase + CompressedEnd;
+			BlockRecord.PhysicalEnd = BlockRecord.PhysicalStart + BlockRecord.DiskSize;
 			OutAnalysis.CompressedBlocks.Add(BlockRecord);
 		}
 
