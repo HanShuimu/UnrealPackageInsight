@@ -14,7 +14,7 @@ const { decodePakAnalysisResponse } = require('../../protocol/src/pak-analysis-d
 
 const WORKER_RESULT_PREFIX = '__UPI_PAK_ANALYSIS_RESULT__';
 const DEFAULT_WORKER_TIMEOUT_MS = 60000;
-const DEFAULT_WORKER_MAX_BUFFER = 8 * 1024 * 1024;
+const DEFAULT_WORKER_MAX_BUFFER = 256 * 1024 * 1024;
 
 function createPakWorkerErrorResponse({ pakPath, code, message }) {
   const builder = new flatbuffers.Builder(256);

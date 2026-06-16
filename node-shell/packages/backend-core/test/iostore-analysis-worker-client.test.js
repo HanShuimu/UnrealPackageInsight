@@ -4,6 +4,10 @@ const test = require('node:test');
 const flatbuffers = require('flatbuffers');
 
 const {
+  DEFAULT_WORKER_MAX_BUFFER,
+  DEFAULT_WORKER_TIMEOUT_MS,
+} = require('../src/pak-analysis-worker-client.js');
+const {
   analyzeIoStoreInWorker,
   WORKER_RESULT_PREFIX,
 } = require('../src/iostore-analysis-worker-client.js');
@@ -97,8 +101,8 @@ test('analyzeIoStoreInWorker sends AES key through stdin and decodes a worker re
   assert.deepEqual(spawnCalls[0].args, ['worker.js']);
   assert.doesNotMatch(spawnCalls[0].args.join(' '), /super-secret-aes-key/);
   assert.equal(spawnCalls[0].options.encoding, 'utf8');
-  assert.equal(spawnCalls[0].options.timeout, 60000);
-  assert.equal(spawnCalls[0].options.maxBuffer, 8 * 1024 * 1024);
+  assert.equal(spawnCalls[0].options.timeout, DEFAULT_WORKER_TIMEOUT_MS);
+  assert.equal(spawnCalls[0].options.maxBuffer, DEFAULT_WORKER_MAX_BUFFER);
   assert.equal(spawnCalls[0].options.windowsHide, true);
 
   assert.deepEqual(JSON.parse(spawnCalls[0].options.input), {
