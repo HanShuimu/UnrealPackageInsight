@@ -1,5 +1,6 @@
 #include "UnrealPackageInsightBackend.h"
 
+#include "IoStoreAnalyzer.h"
 #include "PakAnalyzer.h"
 #include "UpiFlatBufferBuilders.h"
 
@@ -41,5 +42,11 @@ int32_t UPI_AnalyzeIoStoreV1(const char* UtocPathUtf8, const char* UcasPathUtf8,
 		return UPI_CALL_BAD_ARGUMENT;
 	}
 
-	return UPI_CopyResponseBytes(UPI_BuildIoStoreStubResponse(UtocPathUtf8, UcasPathUtf8, AesKeyUtf8OrNull), OutBytes, OutCapacity, RequiredSize);
+	const FString UtocPath = UtocPathUtf8 != nullptr ? FString(UTF8_TO_TCHAR(UtocPathUtf8)) : FString();
+	const FString UcasPath = UcasPathUtf8 != nullptr ? FString(UTF8_TO_TCHAR(UcasPathUtf8)) : FString();
+	const FString AesKey = AesKeyUtf8OrNull != nullptr ? FString(UTF8_TO_TCHAR(AesKeyUtf8OrNull)) : FString();
+
+	FUpiIoStoreAnalysis Analysis;
+	const bool bSuccess = UPI_AnalyzeIoStoreFile(UtocPath, UcasPath, AesKey, Analysis);
+	return UPI_CopyResponseBytes(UPI_BuildIoStoreResponseFromAnalysis(Analysis, bSuccess), OutBytes, OutCapacity, RequiredSize);
 }

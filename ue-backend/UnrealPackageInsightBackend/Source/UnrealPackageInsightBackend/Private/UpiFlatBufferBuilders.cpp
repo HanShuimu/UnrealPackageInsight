@@ -15,7 +15,6 @@ namespace
 {
 	constexpr uint32 UPI_SchemaVersion = 1;
 	constexpr uint32 UPI_ProtocolVersion = 1;
-	constexpr const char* UPI_StubPackagePath = "/Game/Stub/Asset.uasset";
 
 	TArray<uint8> UPI_CopyBuilderBytes(const flatbuffers::FlatBufferBuilder& Builder)
 	{
@@ -24,11 +23,6 @@ namespace
 		TArray<uint8> ResponseBytes;
 		ResponseBytes.Append(Builder.GetBufferPointer(), static_cast<int32>(Builder.GetSize()));
 		return ResponseBytes;
-	}
-
-	const char* UPI_NonNullUtf8(const char* Value)
-	{
-		return Value != nullptr ? Value : "";
 	}
 
 	flatbuffers::Offset<flatbuffers::String> UPI_CreateString(flatbuffers::FlatBufferBuilder& Builder, const FString& Value)
@@ -45,7 +39,12 @@ namespace
 			IssueCode == TEXT("pak.invalid") ||
 			IssueCode == TEXT("pak.aes_key_required") ||
 			IssueCode == TEXT("pak.aes_key_invalid") ||
-			IssueCode == TEXT("pak.index_corrupted"))
+			IssueCode == TEXT("pak.index_corrupted") ||
+			IssueCode == TEXT("iostore.path_required") ||
+			IssueCode == TEXT("iostore.file_not_found") ||
+			IssueCode == TEXT("iostore.invalid") ||
+			IssueCode == TEXT("iostore.aes_key_required") ||
+			IssueCode == TEXT("iostore.aes_key_invalid"))
 		{
 			return upi::v1::IssueSeverity_Error;
 		}
@@ -82,6 +81,30 @@ namespace
 		if (IssueCode == TEXT("pak.index_corrupted"))
 		{
 			return TEXT("Pak index could not be loaded.");
+		}
+		if (IssueCode == TEXT("iostore.path_required"))
+		{
+			return TEXT("IoStore .utoc or .ucas path is required.");
+		}
+		if (IssueCode == TEXT("iostore.file_not_found"))
+		{
+			return TEXT("IoStore .utoc or .ucas file was not found.");
+		}
+		if (IssueCode == TEXT("iostore.invalid"))
+		{
+			return TEXT("IoStore container could not be opened as a valid UE IoStore container.");
+		}
+		if (IssueCode == TEXT("iostore.aes_key_required"))
+		{
+			return TEXT("IoStore container is encrypted and requires an AES key before it can be analyzed.");
+		}
+		if (IssueCode == TEXT("iostore.aes_key_invalid"))
+		{
+			return TEXT("IoStore analysis failed with the provided AES key.");
+		}
+		if (IssueCode == TEXT("iostore.partial_listing"))
+		{
+			return TEXT("IoStore directory index did not expose filenames for every chunk.");
 		}
 
 		return *IssueCode;
@@ -196,96 +219,134 @@ TArray<uint8> UPI_BuildPakResponseFromAnalysis(const FUpiPakAnalysis& Analysis, 
 	return UPI_CopyBuilderBytes(Builder);
 }
 
-TArray<uint8> UPI_BuildIoStoreStubResponse(const char* UtocPathUtf8, const char* UcasPathUtf8, const char* AesKeyUtf8OrNull)
+TArray<uint8> UPI_BuildIoStoreResponseFromAnalysis(const FUpiIoStoreAnalysis& Analysis, bool bSuccess)
 {
-	(void)AesKeyUtf8OrNull;
-
 	flatbuffers::FlatBufferBuilder Builder;
 
-	const auto Overview = upi::v1::CreateIoStoreOverviewDirect(
+	const auto UtocPath = UPI_CreateString(Builder, Analysis.Overview.UtocPath);
+	const auto ContainerBasePath = UPI_CreateString(Builder, Analysis.Overview.ContainerBasePath);
+	const auto EncryptionKeyGuid = UPI_CreateString(Builder, Analysis.Overview.EncryptionKeyGuid);
+	const auto Overview = upi::v1::CreateIoStoreOverview(
 		Builder,
-		UPI_NonNullUtf8(UtocPathUtf8),
-		"",
-		0,
-		0,
-		1,
-		1,
-		65536,
-		1,
-		1024,
-		0,
-		"",
-		0,
-		true,
-		false);
+		UtocPath,
+		ContainerBasePath,
+		Analysis.Overview.ContainerId,
+		Analysis.Overview.TocVersion,
+		Analysis.Overview.TocEntryCount,
+		Analysis.Overview.CompressionBlockCount,
+		Analysis.Overview.CompressionBlockSize,
+		Analysis.Overview.PartitionCount,
+		Analysis.Overview.PartitionSize,
+		Analysis.Overview.ContainerFlags,
+		EncryptionKeyGuid,
+		Analysis.Overview.DirectoryIndexSize,
+		Analysis.Overview.bIndexed,
+		Analysis.Overview.bPartialListing);
+
+	std::vector<flatbuffers::Offset<upi::v1::Issue>> Issues;
+	Issues.reserve(Analysis.Issues.Num());
+	for (const FString& IssueCode : Analysis.Issues)
+	{
+		const auto Code = UPI_CreateString(Builder, IssueCode);
+		const auto Message = UPI_CreateString(Builder, UPI_IssueMessageForCode(IssueCode));
+		Issues.push_back(upi::v1::CreateIssue(
+			Builder,
+			UPI_IssueSeverityForCode(IssueCode, bSuccess),
+			Code,
+			Message));
+	}
 
 	std::vector<flatbuffers::Offset<upi::v1::IoStorePartition>> Partitions;
-	Partitions.push_back(upi::v1::CreateIoStorePartitionDirect(
-		Builder,
-		0,
-		UPI_NonNullUtf8(UcasPathUtf8),
-		1024));
+	Partitions.reserve(Analysis.Partitions.Num());
+	for (const FUpiIoStorePartitionRecord& Partition : Analysis.Partitions)
+	{
+		const auto UcasPath = UPI_CreateString(Builder, Partition.UcasPath);
+		Partitions.push_back(upi::v1::CreateIoStorePartition(
+			Builder,
+			Partition.PartitionIndex,
+			UcasPath,
+			Partition.Size));
+	}
 
 	std::vector<flatbuffers::Offset<upi::v1::IoStorePackageEntry>> Packages;
-	Packages.push_back(upi::v1::CreateIoStorePackageEntryDirect(
-		Builder,
-		UPI_StubPackagePath,
-		1,
-		0,
-		1,
-		0,
-		0,
-		1024,
-		512,
-		512,
-		0,
-		true));
+	Packages.reserve(Analysis.Packages.Num());
+	for (const FUpiIoStorePackageRecord& Package : Analysis.Packages)
+	{
+		const auto PackagePath = UPI_CreateString(Builder, Package.PackagePath);
+		Packages.push_back(upi::v1::CreateIoStorePackageEntry(
+			Builder,
+			PackagePath,
+			Package.PackageId,
+			Package.FirstChunkIndex,
+			Package.ChunkCount,
+			Package.FirstPartitionIndex,
+			Package.FirstOffset,
+			Package.Size,
+			Package.CompressedSize,
+			Package.DiskSize,
+			Package.Order,
+			Package.bHasPath));
+	}
 
 	std::vector<flatbuffers::Offset<upi::v1::IoStoreChunkEntry>> Chunks;
-	Chunks.push_back(upi::v1::CreateIoStoreChunkEntryDirect(
-		Builder,
-		0,
-		UPI_StubPackagePath,
-		0,
-		"00000000000000000000000000000000",
-		"ExportBundleData",
-		1,
-		0,
-		0,
-		0,
-		0,
-		0,
-		1024,
-		512,
-		512,
-		"Zlib",
-		0,
-		1,
-		0,
-		0,
-		0,
-		0,
-		"",
-		true));
+	Chunks.reserve(Analysis.Chunks.Num());
+	for (const FUpiIoStoreChunkRecord& Chunk : Analysis.Chunks)
+	{
+		const auto PackagePath = UPI_CreateString(Builder, Chunk.PackagePath);
+		const auto ChunkId = UPI_CreateString(Builder, Chunk.ChunkId);
+		const auto ChunkType = UPI_CreateString(Builder, Chunk.ChunkType);
+		const auto Compression = UPI_CreateString(Builder, Chunk.Compression);
+		const auto Hash = UPI_CreateString(Builder, Chunk.Hash);
+		Chunks.push_back(upi::v1::CreateIoStoreChunkEntry(
+			Builder,
+			Chunk.PackageIndex,
+			PackagePath,
+			Chunk.TocEntryIndex,
+			ChunkId,
+			ChunkType,
+			Chunk.PackageId,
+			Chunk.ChunkIndex,
+			Chunk.BulkDataCookedIndex,
+			Chunk.LogicalOffset,
+			Chunk.Offset,
+			Chunk.UcasOffset,
+			Chunk.Size,
+			Chunk.CompressedSize,
+			Chunk.DiskSize,
+			Compression,
+			Chunk.FirstBlockIndex,
+			Chunk.BlockCount,
+			Chunk.PartitionIndex,
+			Chunk.Order,
+			Chunk.MetaFlags,
+			Chunk.ContainerFlags,
+			Hash,
+			Chunk.bHasPath));
+	}
 
 	std::vector<flatbuffers::Offset<upi::v1::IoStoreCompressedBlockEntry>> CompressedBlocks;
-	CompressedBlocks.push_back(upi::v1::CreateIoStoreCompressedBlockEntryDirect(
-		Builder,
-		0,
-		0,
-		0,
-		0,
-		0,
-		512,
-		512,
-		1024,
-		"Zlib"));
+	CompressedBlocks.reserve(Analysis.CompressedBlocks.Num());
+	for (const FUpiIoStoreCompressedBlockRecord& Block : Analysis.CompressedBlocks)
+	{
+		const auto Compression = UPI_CreateString(Builder, Block.Compression);
+		CompressedBlocks.push_back(upi::v1::CreateIoStoreCompressedBlockEntry(
+			Builder,
+			Block.BlockIndex,
+			Block.OwnerTocEntryIndex,
+			Block.PartitionIndex,
+			Block.Offset,
+			Block.UcasOffset,
+			Block.CompressedSize,
+			Block.DiskSize,
+			Block.UncompressedSize,
+			Compression));
+	}
 
 	const auto Response = upi::v1::CreateIoStoreAnalysisResponseDirect(
 		Builder,
 		UPI_SchemaVersion,
-		upi::v1::ResponseStatus_Ok,
-		nullptr,
+		bSuccess ? upi::v1::ResponseStatus_Ok : upi::v1::ResponseStatus_Error,
+		&Issues,
 		Overview,
 		&Partitions,
 		&Packages,
