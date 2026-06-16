@@ -52,12 +52,12 @@ function createPakWorkerErrorResponse({ pakPath, code, message }) {
   return decodePakAnalysisResponse(Buffer.from(builder.asUint8Array()));
 }
 
-function encodeWorkerPayload({ dllPath, pakPath, aesKey }) {
-  return Buffer.from(JSON.stringify({
+function serializeWorkerPayload({ dllPath, pakPath, aesKey }) {
+  return JSON.stringify({
     dllPath,
     pakPath,
     aesKey: aesKey ?? '',
-  }), 'utf8').toString('base64');
+  });
 }
 
 function defaultWorkerPath() {
@@ -133,10 +133,12 @@ function analyzePakInWorker({
 }) {
   const result = spawnSyncImpl(
     nodePath,
-    [workerPath, encodeWorkerPayload({ dllPath, pakPath, aesKey })],
+    [workerPath],
     {
       encoding: 'utf8',
       env,
+      // Keep AES keys out of argv; Windows process command lines are observable.
+      input: serializeWorkerPayload({ dllPath, pakPath, aesKey }),
       windowsHide: true,
     }
   );
@@ -156,6 +158,6 @@ module.exports = {
   WORKER_RESULT_PREFIX,
   analyzePakInWorker,
   createPakWorkerErrorResponse,
-  encodeWorkerPayload,
   parseWorkerResult,
+  serializeWorkerPayload,
 };

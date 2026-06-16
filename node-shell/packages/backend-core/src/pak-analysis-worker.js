@@ -1,25 +1,31 @@
 #!/usr/bin/env node
 
+const fs = require('node:fs');
+
 const koffi = require('koffi');
 
 const { loadBackendLibrary } = require('./backend-library.js');
 const { callBufferedExport } = require('./call-buffered-export.js');
 const { WORKER_RESULT_PREFIX } = require('./pak-analysis-worker-client.js');
 
-function decodePayload(argument) {
-  if (!argument) {
+function readPayloadFromStdin() {
+  return fs.readFileSync(0, 'utf8');
+}
+
+function decodePayload(input) {
+  if (!input) {
     throw new Error('Missing worker payload.');
   }
 
-  return JSON.parse(Buffer.from(argument, 'base64').toString('utf8'));
+  return JSON.parse(input);
 }
 
 function writeResult(payload) {
   process.stdout.write(`${WORKER_RESULT_PREFIX}${JSON.stringify(payload)}\n`);
 }
 
-function main(argv = process.argv) {
-  const payload = decodePayload(argv[2]);
+function main(input = readPayloadFromStdin()) {
+  const payload = decodePayload(input);
   const library = loadBackendLibrary({ dllPath: payload.dllPath, koffi });
   const bytes = callBufferedExport({
     fn: library.analyzePakV1,
@@ -48,4 +54,5 @@ if (require.main === module) {
 module.exports = {
   decodePayload,
   main,
+  readPayloadFromStdin,
 };

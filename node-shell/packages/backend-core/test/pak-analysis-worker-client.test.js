@@ -17,12 +17,13 @@ function createCorruptPakFixture(t) {
 
 test('analyzePakInWorker reports an error when a corrupt pak terminates the worker', (t) => {
   const pakPath = createCorruptPakFixture(t);
+  const aesKey = 'super-secret-aes-key';
   const spawnCalls = [];
 
   const response = analyzePakInWorker({
     dllPath: 'backend.dll',
     pakPath,
-    aesKey: '',
+    aesKey,
     nodePath: 'node.exe',
     workerPath: 'worker.js',
     spawnSync(command, args, options) {
@@ -47,14 +48,15 @@ test('analyzePakInWorker reports an error when a corrupt pak terminates the work
 
   assert.equal(spawnCalls.length, 1);
   assert.equal(spawnCalls[0].command, 'node.exe');
-  assert.equal(spawnCalls[0].args[0], 'worker.js');
+  assert.deepEqual(spawnCalls[0].args, ['worker.js']);
+  assert.doesNotMatch(spawnCalls[0].args.join(' '), /super-secret-aes-key/);
   assert.equal(spawnCalls[0].options.encoding, 'utf8');
   assert.equal(spawnCalls[0].options.windowsHide, true);
 
-  const payload = JSON.parse(Buffer.from(spawnCalls[0].args[1], 'base64').toString('utf8'));
+  const payload = JSON.parse(spawnCalls[0].options.input);
   assert.deepEqual(payload, {
     dllPath: 'backend.dll',
     pakPath,
-    aesKey: '',
+    aesKey,
   });
 });
