@@ -11,6 +11,7 @@
 #include "Misc/CommandLine.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/CoreDelegates.h"
+#include "Misc/EncryptionKeyManager.h"
 #include "Misc/Guid.h"
 #include "Misc/Paths.h"
 #include "Misc/SecureHash.h"
@@ -193,10 +194,9 @@ namespace
 
 	void UPI_RegisterPakAesKey(const FGuid& EncryptionKeyGuid, const FAES::FAESKey& Key)
 	{
-		FCoreDelegates::GetRegisterEncryptionKeyMulticastDelegate().Broadcast(FGuid(), Key);
 		if (EncryptionKeyGuid.IsValid())
 		{
-			FCoreDelegates::GetRegisterEncryptionKeyMulticastDelegate().Broadcast(EncryptionKeyGuid, Key);
+			UE::FEncryptionKeyManager::Get().AddKey(EncryptionKeyGuid, Key);
 			return;
 		}
 
