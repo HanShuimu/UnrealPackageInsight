@@ -5,11 +5,15 @@
 #include "HAL/FileManager.h"
 #include "HAL/PlatformFileManager.h"
 #include "IO/IoDispatcher.h"
+// Narrow internal include for FIoStoreTocHeader: public FIoStoreReader exposes the encryption key GUID only after Initialize.
+#include "IO/IoStore.h"
 #include "IO/IoStatus.h"
 #include "Math/UnrealMathUtility.h"
 #include "Misc/AES.h"
 #include "Misc/Guid.h"
 #include "Misc/Paths.h"
+#include "Serialization/Archive.h"
+#include "Templates/UniquePtr.h"
 
 namespace
 {
@@ -81,6 +85,33 @@ namespace
 		Overview.UtocPath = BasePath.IsEmpty() ? FString() : BasePath + TEXT(".utoc");
 	}
 
+	bool UPI_ReadTocHeader(const FString& UtocPath, FIoStoreTocHeader& OutHeader)
+	{
+		TUniquePtr<FArchive> Reader(IFileManager::Get().CreateFileReader(*UtocPath));
+		if (!Reader.IsValid() || Reader->TotalSize() < static_cast<int64>(sizeof(FIoStoreTocHeader)))
+		{
+			return false;
+		}
+
+		Reader->Serialize(&OutHeader, sizeof(FIoStoreTocHeader));
+		return !Reader->IsError() && OutHeader.CheckMagic();
+	}
+
+	void UPI_FillOverviewFromTocHeader(const FIoStoreTocHeader& Header, FUpiIoStoreAnalysis& OutAnalysis)
+	{
+		OutAnalysis.Overview.ContainerId = Header.ContainerId.Value();
+		OutAnalysis.Overview.TocVersion = Header.Version;
+		OutAnalysis.Overview.TocEntryCount = Header.TocEntryCount;
+		OutAnalysis.Overview.CompressionBlockCount = Header.TocCompressedBlockEntryCount;
+		OutAnalysis.Overview.CompressionBlockSize = Header.CompressionBlockSize;
+		OutAnalysis.Overview.PartitionCount = Header.PartitionCount;
+		OutAnalysis.Overview.PartitionSize = Header.PartitionSize != MAX_uint64 ? Header.PartitionSize : 0;
+		OutAnalysis.Overview.ContainerFlags = static_cast<uint32>(static_cast<uint8>(Header.ContainerFlags));
+		OutAnalysis.Overview.EncryptionKeyGuid = Header.EncryptionKeyGuid.IsValid() ? LexToString(Header.EncryptionKeyGuid) : FString();
+		OutAnalysis.Overview.DirectoryIndexSize = Header.DirectoryIndexSize;
+		OutAnalysis.Overview.bIndexed = EnumHasAnyFlags(Header.ContainerFlags, EIoContainerFlags::Indexed);
+	}
+
 	int32 UPI_HexValue(TCHAR Char)
 	{
 		if (Char >= TEXT('0') && Char <= TEXT('9'))
@@ -148,6 +179,22 @@ namespace
 	uint32 UPI_BulkDataCookedIndex(const FIoChunkId& ChunkId)
 	{
 		return static_cast<uint32>(ChunkId.GetData()[10]);
+	}
+
+	bool UPI_IsPackageBackedChunkType(EIoChunkType ChunkType)
+	{
+		switch (ChunkType)
+		{
+		case EIoChunkType::ExportBundleData:
+		case EIoChunkType::BulkData:
+		case EIoChunkType::OptionalBulkData:
+		case EIoChunkType::MemoryMappedBulkData:
+		case EIoChunkType::PackageStoreEntry:
+		case EIoChunkType::PackageResource:
+			return true;
+		default:
+			return false;
+		}
 	}
 
 	uint32 UPI_MetaFlags(const FIoStoreTocChunkInfo& ChunkInfo)
@@ -221,10 +268,12 @@ namespace
 			OutAnalysis.Partitions.Add(MoveTemp(Partition));
 		}
 
-		OutAnalysis.Overview.PartitionCount = static_cast<uint32>(OutAnalysis.Partitions.Num());
-		if (OutAnalysis.Partitions.Num() > 0)
+		if (OutAnalysis.Overview.PartitionCount == 0)
 		{
-			// Public FIoStoreReader does not expose Header.PartitionSize; the first partition size is the closest stable inference.
+			OutAnalysis.Overview.PartitionCount = static_cast<uint32>(OutAnalysis.Partitions.Num());
+		}
+		if (OutAnalysis.Overview.PartitionSize == 0 && OutAnalysis.Partitions.Num() > 0)
+		{
 			OutAnalysis.Overview.PartitionSize = OutAnalysis.Partitions[0].Size;
 		}
 	}
@@ -240,8 +289,6 @@ namespace
 		const FGuid EncryptionKeyGuid = Reader.GetEncryptionKeyGuid();
 		OutAnalysis.Overview.EncryptionKeyGuid = EncryptionKeyGuid.IsValid() ? LexToString(EncryptionKeyGuid) : FString();
 		OutAnalysis.Overview.bIndexed = EnumHasAnyFlags(ContainerFlags, EIoContainerFlags::Indexed);
-		// DirectoryIndexSize is only on the private TOC header; leave it at 0 until a private-reader pass is justified.
-		OutAnalysis.Overview.DirectoryIndexSize = 0;
 
 		uint32 CompressionBlockCount = 0;
 		Reader.EnumerateCompressedBlocks([&CompressionBlockCount](const FIoStoreTocCompressedBlockInfo&)
@@ -268,6 +315,7 @@ namespace
 			Chunk.TocEntryIndex = TocEntryIndex++;
 			Chunk.ChunkId = LexToString(ChunkInfo.Id);
 			Chunk.ChunkType = LexToString(ChunkInfo.ChunkType);
+			Chunk.bPackageBacked = UPI_IsPackageBackedChunkType(ChunkInfo.ChunkType);
 			Chunk.PackageId = UPI_ChunkPackageId(ChunkInfo.Id);
 			Chunk.ChunkIndex = UPI_ChunkIndex(ChunkInfo.Id);
 			Chunk.BulkDataCookedIndex = UPI_BulkDataCookedIndex(ChunkInfo.Id);
@@ -376,7 +424,7 @@ namespace
 		for (int32 ChunkIndex = 0; ChunkIndex < OutAnalysis.Chunks.Num(); ++ChunkIndex)
 		{
 			FUpiIoStoreChunkRecord& Chunk = OutAnalysis.Chunks[ChunkIndex];
-			if (Chunk.PackageId == 0)
+			if (!Chunk.bPackageBacked || Chunk.PackageId == 0)
 			{
 				Chunk.PackageIndex = UINT32_MAX;
 				continue;
@@ -436,6 +484,14 @@ bool UPI_AnalyzeIoStoreFile(const FString& UtocPath, const FString& UcasPath, co
 		return false;
 	}
 
+	FIoStoreTocHeader TocHeader;
+	if (!UPI_ReadTocHeader(OutAnalysis.Overview.UtocPath, TocHeader))
+	{
+		OutAnalysis.Issues.Add(TEXT("iostore.invalid"));
+		return false;
+	}
+	UPI_FillOverviewFromTocHeader(TocHeader, OutAnalysis);
+
 	TMap<FGuid, FAES::FAESKey> DecryptionKeys;
 	if (!AesKey.TrimStartAndEnd().IsEmpty())
 	{
@@ -446,6 +502,15 @@ bool UPI_AnalyzeIoStoreFile(const FString& UtocPath, const FString& UcasPath, co
 			return false;
 		}
 		DecryptionKeys.Add(FGuid(), ParsedKey);
+		if (TocHeader.EncryptionKeyGuid.IsValid())
+		{
+			DecryptionKeys.Add(TocHeader.EncryptionKeyGuid, ParsedKey);
+		}
+	}
+	else if (EnumHasAnyFlags(TocHeader.ContainerFlags, EIoContainerFlags::Encrypted))
+	{
+		OutAnalysis.Issues.Add(TEXT("iostore.aes_key_required"));
+		return false;
 	}
 
 	FIoStoreReader Reader;
@@ -455,6 +520,10 @@ bool UPI_AnalyzeIoStoreFile(const FString& UtocPath, const FString& UcasPath, co
 		if (UPI_IsMissingKeyStatus(InitializeStatus))
 		{
 			OutAnalysis.Issues.Add(AesKey.TrimStartAndEnd().IsEmpty() ? TEXT("iostore.aes_key_required") : TEXT("iostore.aes_key_invalid"));
+		}
+		else if (EnumHasAnyFlags(TocHeader.ContainerFlags, EIoContainerFlags::Encrypted) && !AesKey.TrimStartAndEnd().IsEmpty())
+		{
+			OutAnalysis.Issues.Add(TEXT("iostore.aes_key_invalid"));
 		}
 		else if (InitializeStatus.GetErrorCode() == EIoErrorCode::FileOpenFailed || InitializeStatus.GetErrorCode() == EIoErrorCode::NotFound)
 		{

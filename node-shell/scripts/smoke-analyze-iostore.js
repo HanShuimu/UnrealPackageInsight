@@ -81,14 +81,37 @@ function assertSuccessfulListing(response, label) {
   assert.notEqual(response.chunks[0]?.chunkId, '00000000000000000000000000000000', `${label}: still returned stub chunk`);
 }
 
+function assertNonPackageChunksStayOutOfPackages(response, label) {
+  const nonPackageTypes = new Set([
+    'ContainerHeader',
+    'ShaderCodeLibrary',
+    'ShaderCode',
+    'ExternalFile',
+    'DerivedData',
+    'EditorDerivedData',
+    'ScriptObjects',
+  ]);
+  const nonPackageChunk = response.chunks.find((chunk) => nonPackageTypes.has(chunk.chunkType));
+  assert.ok(nonPackageChunk, `${label}: expected at least one obvious non-package chunk`);
+  assert.equal(
+    nonPackageChunk.packageIndex,
+    0xFFFFFFFF,
+    `${label}: ${nonPackageChunk.chunkType} chunk should not have a packageIndex`,
+  );
+  assert.ok(
+    response.packages.length < response.chunks.length,
+    `${label}: package rows should not be 1:1 with chunk rows when non-package chunks are present`,
+  );
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const dllPath = args.dll;
   const selectedPath = args.iostore;
-  const aesKey = args['aes-key'] || '';
+  const aesKey = process.env.UPI_AES_KEY || args['aes-key'] || '';
   const engineRoot = args['engine-root'] || 'C:\\WORKSPACE_UE\\UnrealEngine';
   if (!dllPath || !selectedPath) {
-    throw new Error('Usage: smoke-analyze-iostore.js --dll <UnrealPackageInsightBackend.dll> --iostore <Path.utoc|Path.ucas> [--engine-root <EngineRoot>] [--aes-key <hex>]');
+    throw new Error('Usage: smoke-analyze-iostore.js --dll <UnrealPackageInsightBackend.dll> --iostore <Path.utoc|Path.ucas> [--engine-root <EngineRoot>] [--aes-key <hex>]. Prefer UPI_AES_KEY for real keys.');
   }
 
   assert.equal(fs.existsSync(dllPath), true, `Backend DLL not found: ${dllPath}`);
@@ -113,12 +136,15 @@ function main() {
   assert.equal(fromUtoc.overview.containerBasePath, fromUcas.overview.containerBasePath);
   assert.equal(fromUtoc.overview.tocEntryCount, fromUcas.overview.tocEntryCount);
   assert.equal(fromUtoc.chunks.length, fromUcas.chunks.length);
+  assertNonPackageChunksStayOutOfPackages(fromUtoc, 'utoc selection');
+  assertNonPackageChunksStayOutOfPackages(fromUcas, 'ucas selection');
 
   console.log(stringifyWithBigInts({
     utoc: summarize(fromUtoc),
     ucas: summarize(fromUcas),
     sampleChunks: fromUtoc.chunks.slice(0, 5).map((entry) => ({
       tocEntryIndex: entry.tocEntryIndex,
+      packageIndex: entry.packageIndex,
       packagePath: entry.packagePath,
       chunkType: entry.chunkType,
       offset: entry.offset.toString(),

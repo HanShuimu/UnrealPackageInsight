@@ -10,7 +10,8 @@ public class UnrealPackageInsightBackend : ModuleRules
 		PrivateIncludePaths.AddRange(
 			new string[]
 			{
-				ResolveGeneratedCppIncludePath(ModuleDirectory)
+				ResolveGeneratedCppIncludePath(ModuleDirectory),
+				Path.Combine(EngineDirectory, "Source", "Runtime", "Core", "Internal")
 			}
 		);
 

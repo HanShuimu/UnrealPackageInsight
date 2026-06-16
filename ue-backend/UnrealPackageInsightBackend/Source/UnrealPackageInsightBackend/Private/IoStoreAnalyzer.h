@@ -69,6 +69,7 @@ struct FUpiIoStoreChunkRecord
 	uint32 ContainerFlags = 0;
 	FString Hash;
 	bool bHasPath = false;
+	bool bPackageBacked = false;
 };
 
 struct FUpiIoStoreCompressedBlockRecord
