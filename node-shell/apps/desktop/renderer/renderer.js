@@ -203,10 +203,9 @@ async function analyzeFile(filePath) {
       return;
     }
 
-    if (needsAesKey(result)) {
+    if (hasAesRetryIssue(result)) {
       renderAnalysis(result);
-      promptForAesKey(filePath);
-      setStatus('AES key required');
+      keepAesDialogOpenForIssue(filePath, result);
       return;
     }
 

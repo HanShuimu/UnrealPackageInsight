@@ -172,6 +172,49 @@ test('analysis:submitAesKeyAndRetry clears keys rejected by backend AES validati
   });
 });
 
+test('analysis:analyze clears session keys rejected by backend AES validation', async () => {
+  const cases = [
+    {
+      code: 'pak.aes_key_invalid',
+      message: 'Pak analysis failed with the provided AES key.',
+    },
+    {
+      code: 'iostore.aes_key_required',
+      message: 'IoStore container is encrypted and requires an AES key.',
+    },
+  ];
+
+  for (const issue of cases) {
+    const state = createDesktopState({ backendClient: { getBackendInfo() {} } });
+    state.aesSession.setKey('abcdefabcdefabcdefabcdefabcdefab');
+    state.analysisService = {
+      async analyze() {
+        return {
+          status: 'Error',
+          issues: [{
+            severity: 'error',
+            code: issue.code,
+            message: issue.message,
+          }],
+        };
+      },
+    };
+    const handlers = createIpcHandlers({ state });
+
+    const result = await handlers.analyze('C:\\Game\\Content\\Paks\\pakchunk0-Windows.pak');
+
+    assert.equal(state.aesSession.getKey(), '');
+    assert.deepEqual(result, {
+      status: 'Error',
+      issues: [{
+        severity: 'error',
+        code: issue.code,
+        message: issue.message,
+      }],
+    });
+  }
+});
+
 test('createWindow sets a minimum size that matches the renderer shell constraints', async () => {
   const createdWindows = [];
   class FakeBrowserWindow {

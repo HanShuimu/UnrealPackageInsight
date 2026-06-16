@@ -111,7 +111,11 @@ function createIpcHandlers({
         return cloneResponse(PACKAGE_NOT_OPEN_RESPONSE);
       }
 
-      return state.analysisService.analyze(filePath);
+      const result = await state.analysisService.analyze(filePath);
+      if (hasBackendAesRejection(result)) {
+        state.aesSession.clear();
+      }
+      return result;
     },
 
     async submitAesKeyAndRetry(filePath, aesKey) {
