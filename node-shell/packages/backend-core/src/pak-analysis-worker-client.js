@@ -13,6 +13,8 @@ const {
 const { decodePakAnalysisResponse } = require('../../protocol/src/pak-analysis-decoder.js');
 
 const WORKER_RESULT_PREFIX = '__UPI_PAK_ANALYSIS_RESULT__';
+const DEFAULT_WORKER_TIMEOUT_MS = 60000;
+const DEFAULT_WORKER_MAX_BUFFER = 8 * 1024 * 1024;
 
 function createPakWorkerErrorResponse({ pakPath, code, message }) {
   const builder = new flatbuffers.Builder(256);
@@ -76,6 +78,10 @@ function workerExitDescription(result) {
   return `exit code ${result.status}`;
 }
 
+function isWorkerTimeout(result) {
+  return result && result.error && result.error.code === 'ETIMEDOUT';
+}
+
 function findWorkerResult(stdout) {
   return String(stdout || '')
     .split(/\r?\n/)
@@ -130,6 +136,8 @@ function analyzePakInWorker({
   workerPath = defaultWorkerPath(),
   spawnSync: spawnSyncImpl = spawnSync,
   env = process.env,
+  timeoutMs = DEFAULT_WORKER_TIMEOUT_MS,
+  maxBuffer = DEFAULT_WORKER_MAX_BUFFER,
 }) {
   const result = spawnSyncImpl(
     nodePath,
@@ -139,11 +147,21 @@ function analyzePakInWorker({
       env,
       // Keep AES keys out of argv; Windows process command lines are observable.
       input: serializeWorkerPayload({ dllPath, pakPath, aesKey }),
+      timeout: timeoutMs,
+      maxBuffer,
       windowsHide: true,
     }
   );
 
   if (result.error || result.status !== 0 || result.signal) {
+    if (isWorkerTimeout(result)) {
+      return createPakWorkerErrorResponse({
+        pakPath,
+        code: 'pak.worker_timeout',
+        message: `Pak analysis worker timed out after ${timeoutMs} ms.`,
+      });
+    }
+
     return createPakWorkerErrorResponse({
       pakPath,
       code: 'pak.worker_failed',
@@ -155,6 +173,8 @@ function analyzePakInWorker({
 }
 
 module.exports = {
+  DEFAULT_WORKER_MAX_BUFFER,
+  DEFAULT_WORKER_TIMEOUT_MS,
   WORKER_RESULT_PREFIX,
   analyzePakInWorker,
   createPakWorkerErrorResponse,

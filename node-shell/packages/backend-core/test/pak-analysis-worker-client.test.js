@@ -51,6 +51,8 @@ test('analyzePakInWorker reports an error when a corrupt pak terminates the work
   assert.deepEqual(spawnCalls[0].args, ['worker.js']);
   assert.doesNotMatch(spawnCalls[0].args.join(' '), /super-secret-aes-key/);
   assert.equal(spawnCalls[0].options.encoding, 'utf8');
+  assert.equal(spawnCalls[0].options.timeout, 60000);
+  assert.equal(spawnCalls[0].options.maxBuffer, 8 * 1024 * 1024);
   assert.equal(spawnCalls[0].options.windowsHide, true);
 
   const payload = JSON.parse(spawnCalls[0].options.input);
@@ -59,4 +61,33 @@ test('analyzePakInWorker reports an error when a corrupt pak terminates the work
     pakPath,
     aesKey,
   });
+});
+
+test('analyzePakInWorker reports timeout distinctly', (t) => {
+  const pakPath = createCorruptPakFixture(t);
+
+  const response = analyzePakInWorker({
+    dllPath: 'backend.dll',
+    pakPath,
+    nodePath: 'node.exe',
+    workerPath: 'worker.js',
+    timeoutMs: 1234,
+    maxBuffer: 5678,
+    spawnSync(command, args, options) {
+      assert.equal(options.timeout, 1234);
+      assert.equal(options.maxBuffer, 5678);
+      return {
+        status: null,
+        signal: 'SIGTERM',
+        stdout: '',
+        stderr: '',
+        error: Object.assign(new Error('spawnSync node.exe ETIMEDOUT'), { code: 'ETIMEDOUT' }),
+      };
+    },
+  });
+
+  assert.equal(response.status, 1);
+  assert.equal(response.overview.pakPath, pakPath);
+  assert.equal(response.issues[0].code, 'pak.worker_timeout');
+  assert.match(response.issues[0].message, /timed out/i);
 });

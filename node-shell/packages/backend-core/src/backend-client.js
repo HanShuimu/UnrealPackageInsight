@@ -1,13 +1,14 @@
 const { decodeBackendInfoResponse } = require('../../protocol/src/backend-info-decoder.js');
-const { decodeIoStoreAnalysisResponse } = require('../../protocol/src/iostore-analysis-decoder.js');
 const { loadBackendLibrary } = require('./backend-library.js');
 const { callBufferedExport } = require('./call-buffered-export.js');
+const { analyzeIoStoreInWorker } = require('./iostore-analysis-worker-client.js');
 const { analyzePakInWorker } = require('./pak-analysis-worker-client.js');
 
 function createBackendClient({
   dllPath,
   koffi,
   platform = process.platform,
+  runIoStoreAnalysisWorker = analyzeIoStoreInWorker,
   runPakAnalysisWorker = analyzePakInWorker,
 }) {
   const library = loadBackendLibrary({ dllPath, koffi, platform });
@@ -30,12 +31,12 @@ function createBackendClient({
     },
 
     analyzeIoStore({ utocPath, ucasPath, aesKey = '' }) {
-      const bytes = callBufferedExport({
-        fn: library.analyzeIoStoreV1,
-        koffi,
-        args: [utocPath, ucasPath, aesKey ?? ''],
+      return runIoStoreAnalysisWorker({
+        dllPath,
+        utocPath,
+        ucasPath,
+        aesKey: aesKey ?? '',
       });
-      return decodeIoStoreAnalysisResponse(bytes);
     },
   };
 }

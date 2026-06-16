@@ -14,6 +14,12 @@ function createFakeKoffi() {
             };
           }
 
+          if (signature === 'int UPI_AnalyzeIoStoreV1(str, str, str, void*, int, void*)') {
+            return () => {
+              throw new Error('Parent process must not run IoStore analysis in-process');
+            };
+          }
+
           return () => {};
         },
       };
@@ -43,6 +49,37 @@ test('createBackendClient delegates Pak analysis to the worker process', () => {
   assert.deepEqual(workerCalls, [{
     dllPath: 'backend.dll',
     pakPath: 'corrupt.pak',
+    aesKey: 'abc123',
+  }]);
+});
+
+test('createBackendClient delegates IoStore analysis to the worker process', () => {
+  const workerCalls = [];
+  const expectedResponse = {
+    status: 1,
+    issues: [{ code: 'iostore.worker_failed' }],
+  };
+  const client = createBackendClient({
+    dllPath: 'backend.dll',
+    koffi: createFakeKoffi(),
+    platform: 'linux',
+    runIoStoreAnalysisWorker(request) {
+      workerCalls.push(request);
+      return expectedResponse;
+    },
+  });
+
+  const response = client.analyzeIoStore({
+    utocPath: 'global.utoc',
+    ucasPath: 'global.ucas',
+    aesKey: 'abc123',
+  });
+
+  assert.equal(response, expectedResponse);
+  assert.deepEqual(workerCalls, [{
+    dllPath: 'backend.dll',
+    utocPath: 'global.utoc',
+    ucasPath: 'global.ucas',
     aesKey: 'abc123',
   }]);
 });
