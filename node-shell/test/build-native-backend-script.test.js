@@ -104,6 +104,26 @@ test('findBuiltDll discovers the newest backend DLL under Engine/Binaries/Win64'
   assert.equal(findBuiltDll(engineRoot), newerDllPath);
 });
 
+test('buildNativeBackends preserves existing staged source when input validation fails', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-build-guard-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const repoRoot = path.join(root, 'repo');
+  const engineRoot = path.join(root, 'engine');
+  const destinationDir = path.join(engineRoot, 'Engine', 'Source', 'Programs', 'UnrealPackageInsightBackend');
+  const markerPath = path.join(destinationDir, 'keep.marker');
+  fs.mkdirSync(destinationDir, { recursive: true });
+  fs.writeFileSync(markerPath, 'existing');
+  const versionPath = path.join(engineRoot, 'Engine', 'Build', 'Build.version');
+  fs.mkdirSync(path.dirname(versionPath), { recursive: true });
+  fs.writeFileSync(versionPath, JSON.stringify({ MajorVersion: 5, MinorVersion: 7, PatchVersion: 4 }));
+  const buildBat = path.join(engineRoot, 'Engine', 'Build', 'BatchFiles', 'Build.bat');
+  fs.mkdirSync(path.dirname(buildBat), { recursive: true });
+  fs.writeFileSync(buildBat, '');
+
+  assert.throws(() => buildNativeBackends({ repoRoot, engineRoot }), /UnrealPackageInsightBackend/);
+  assert.equal(fs.existsSync(markerPath), true);
+});
+
 test('buildNativeBackends stages and builds all configurations by default', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-build-flow-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -148,6 +168,14 @@ test('buildNativeBackends stages and builds all configurations by default', (t) 
   assert.deepEqual(smokeCalls.map((entry) => entry.manifest.configuration), ['Debug', 'Development', 'Shipping']);
   assert.deepEqual(smokeCalls.map((entry) => entry.dllPath), result.map((entry) => entry.dllPath));
   assert.deepEqual(smokeCalls.map((entry) => entry.manifest.id), result.map((entry) => entry.manifest.id));
+  assert.equal(fs.existsSync(path.join(
+    engineRoot,
+    'Engine',
+    'Source',
+    'Programs',
+    'UnrealPackageInsightBackend',
+    'UnrealPackageInsightBackend.Target.cs',
+  )), true);
   for (const entry of result) {
     assert.equal(fs.existsSync(path.join(entry.nativeDir, 'backend.json')), true);
     assert.equal(fs.existsSync(path.join(entry.nativeDir, 'UnrealPackageInsightBackend.dll')), true);

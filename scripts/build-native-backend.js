@@ -172,9 +172,14 @@ function buildNativeBackends({
   }
   const sourceDir = path.join(repoRoot, 'ue-backend', 'UnrealPackageInsightBackend');
   const destinationDir = path.join(engineRoot, 'Engine', 'Source', 'Programs', 'UnrealPackageInsightBackend');
+  const buildBat = path.join(engineRoot, 'Engine', 'Build', 'BatchFiles', 'Build.bat');
+  if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
+    throw new Error(`Backend source directory missing: ${sourceDir}`);
+  }
+  const engineVersion = readEngineVersion(engineRoot);
+  fs.accessSync(buildBat, fs.constants.R_OK);
   copyDirectory(sourceDir, destinationDir);
 
-  const engineVersion = readEngineVersion(engineRoot);
   const results = [];
   for (const buildConfiguration of resolveConfigurations({ configuration })) {
     const builtDll = runBuild({ engineRoot, configuration: buildConfiguration });
