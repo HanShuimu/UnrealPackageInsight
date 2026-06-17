@@ -259,25 +259,40 @@ async function chooseBackend(request) {
   }
 
   const selectedId = await new Promise((resolve) => {
-    const submit = (event) => {
-      event.preventDefault();
-      const selected = elements.backendOptions.querySelector('input[name="backend"]:checked');
-      cleanup();
-      resolve(selected ? selected.value : '');
-    };
-    const cancel = () => {
-      cleanup();
-      resolve('');
-    };
-    const cleanup = () => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
       elements.backendForm.removeEventListener('submit', submit);
       elements.backendCancel.removeEventListener('click', cancel);
+      elements.backendDialog.removeEventListener('cancel', nativeCancel);
+      elements.backendDialog.removeEventListener('close', nativeClose);
       if (elements.backendDialog.open) {
         elements.backendDialog.close();
       }
+      resolve(value);
+    };
+    const submit = (event) => {
+      event.preventDefault();
+      const selected = elements.backendOptions.querySelector('input[name="backend"]:checked');
+      finish(selected ? selected.value : '');
+    };
+    const cancel = () => {
+      finish('');
+    };
+    const nativeCancel = (event) => {
+      event.preventDefault();
+      finish('');
+    };
+    const nativeClose = () => {
+      finish('');
     };
     elements.backendForm.addEventListener('submit', submit);
     elements.backendCancel.addEventListener('click', cancel);
+    elements.backendDialog.addEventListener('cancel', nativeCancel);
+    elements.backendDialog.addEventListener('close', nativeClose);
     elements.backendDialog.showModal();
   });
 

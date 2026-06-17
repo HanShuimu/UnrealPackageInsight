@@ -41,6 +41,7 @@ class FakeElement {
     };
     this.textContent = '';
     this.value = '';
+    this.checked = false;
     this.open = false;
     this.closeCalls = [];
     this.showModalCalls = 0;
@@ -89,7 +90,53 @@ class FakeElement {
   }
 
   addEventListener(name, handler) {
-    this.eventListeners.set(name, handler);
+    if (!this.eventListeners.has(name)) {
+      this.eventListeners.set(name, new Set());
+    }
+    this.eventListeners.get(name).add(handler);
+  }
+
+  removeEventListener(name, handler) {
+    this.eventListeners.get(name)?.delete(handler);
+  }
+
+  dispatchEvent(event) {
+    event.target = this;
+    for (const handler of this.eventListeners.get(event.type) || []) {
+      handler(event);
+    }
+    return !event.defaultPrevented;
+  }
+
+  append(...children) {
+    for (const child of children) {
+      this.appendChild(child);
+    }
+  }
+
+  querySelector(selector) {
+    const matches = (element) => {
+      if (selector === 'input[name="backend"]') {
+        return element.tagName === 'INPUT' && element.name === 'backend';
+      }
+      if (selector === 'input[name="backend"]:checked') {
+        return element.tagName === 'INPUT' && element.name === 'backend' && element.checked;
+      }
+      return false;
+    };
+    const visit = (element) => {
+      if (matches(element)) {
+        return element;
+      }
+      for (const child of element.children) {
+        const found = visit(child);
+        if (found) {
+          return found;
+        }
+      }
+      return null;
+    };
+    return visit(this);
   }
 
   showModal() {
@@ -100,6 +147,7 @@ class FakeElement {
   close(reason = '') {
     this.open = false;
     this.closeCalls.push(reason);
+    this.dispatchEvent({ type: 'close' });
   }
 
   focus() {
@@ -125,8 +173,14 @@ class FakeDocument {
       'aes-message',
       'aes-submit',
       'aes-cancel',
+      'backend-dialog',
+      'backend-form',
+      'backend-message',
+      'backend-options',
+      'backend-cancel',
+      'backend-submit',
     ]) {
-      this.elements.set(id, new FakeElement(id === 'aes-dialog' ? 'dialog' : 'div'));
+      this.elements.set(id, new FakeElement(id.endsWith('-dialog') ? 'dialog' : 'div'));
     }
   }
 
@@ -166,6 +220,10 @@ async function flushPromises() {
   await Promise.resolve();
 }
 
+async function flushMacrotask() {
+  await new Promise((resolve) => setImmediate(resolve));
+}
+
 function collectText(node) {
   if (!node) {
     return '';
@@ -186,6 +244,7 @@ async function loadRenderer(upiOverrides = {}) {
         openPackageDirectory: async () => null,
         analyze: async () => ({ status: 'OK', overview: {} }),
         submitAesKeyAndRetry: async () => ({ status: 'OK', overview: {} }),
+        chooseBackend: async () => '',
         ...upiOverrides,
       },
     },
@@ -215,6 +274,24 @@ function aesRequiredResult() {
       code: 'pak.aes_key_required',
       message: 'AES key required',
     }],
+  };
+}
+
+function backendSelectionResult(filePath = 'C:\\Paks\\A.pak') {
+  return {
+    status: 'Error',
+    issues: [{
+      severity: 'error',
+      code: 'backend.multiple_candidates',
+      message: 'Multiple compatible backends found.',
+    }],
+    backendSelection: {
+      filePath,
+      candidates: [{
+        id: 'ue-5.7.4-win32-x64-development',
+        label: 'UE 5.7.4 Development',
+      }],
+    },
   };
 }
 
@@ -429,4 +506,36 @@ test('AES retry result does not overwrite the panel after selecting another file
   const contentText = collectText(document.getElementById('content'));
   assert.match(contentText, /B/);
   assert.doesNotMatch(contentText, /A with key/);
+});
+
+test('native backend dialog close resolves selection as canceled', async () => {
+  const chooseRequests = [];
+  const { context, document } = await loadRenderer({
+    analyze: async (filePath) => backendSelectionResult(filePath),
+    chooseBackend: async (request) => {
+      chooseRequests.push(request);
+      return request.selectedId;
+    },
+  });
+
+  const analysis = context.analyzeFile('C:\\Paks\\A.pak');
+  const dialog = document.getElementById('backend-dialog');
+  for (let attempt = 0; attempt < 5 && !dialog.open; attempt += 1) {
+    await flushMacrotask();
+  }
+  assert.equal(dialog.open, true);
+
+  dialog.close('cancel');
+  await flushMacrotask();
+  const outcome = await Promise.race([
+    analysis.then(() => 'resolved'),
+    new Promise((resolve) => { setTimeout(() => resolve('pending'), 25); }),
+  ]);
+
+  assert.equal(outcome, 'resolved');
+  assert.deepEqual(JSON.parse(JSON.stringify(chooseRequests)), [{
+    ...backendSelectionResult('C:\\Paks\\A.pak').backendSelection,
+    selectedId: '',
+  }]);
+  assert.equal(document.getElementById('status').textContent, 'Backend selection canceled');
 });

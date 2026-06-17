@@ -52,27 +52,122 @@ test('package:openDirectory creates AnalysisService with backendClientProvider',
 
 test('backend:choose stores selected backend for a file and updates provider', () => {
   const providerSelections = [];
+  const filePath = 'C:\\Paks\\pakchunk0-Windows.pak';
+  const selectedId = 'ue-5.7.4-win32-x64-development';
   const state = createDesktopState({
     backendClientProvider: {
       setSelection(filePath, backendId) {
         providerSelections.push({ filePath, backendId });
       },
     },
+    pendingBackendSelections: new Map([[
+      filePath,
+      { candidates: [{ id: selectedId, label: 'UE 5.7.4 Development' }] },
+    ]]),
   });
   const handlers = createIpcHandlers({ state });
   const request = {
-    filePath: 'C:\\Paks\\pakchunk0-Windows.pak',
-    selectedId: 'ue-5.7.4-win32-x64-development',
+    filePath,
+    selectedId,
   };
 
   const result = handlers.chooseBackend(request);
 
   assert.equal(result, request.selectedId);
   assert.equal(state.backendSelections.get(request.filePath), request.selectedId);
+  assert.equal(state.pendingBackendSelections.has(request.filePath), false);
   assert.deepEqual(providerSelections, [{
     filePath: request.filePath,
     backendId: request.selectedId,
   }]);
+});
+
+test('analysis:analyze stores pending backend candidates for chooser validation', async () => {
+  const filePath = 'C:\\Paks\\pakchunk0-Windows.pak';
+  const candidates = [
+    { id: 'ue-5.7.4-win32-x64-development', label: 'UE 5.7.4 Development' },
+    { id: 'ue-5.7.4-win32-x64-shipping', label: 'UE 5.7.4 Shipping' },
+  ];
+  const state = createDesktopState();
+  state.analysisService = {
+    async analyze() {
+      const error = new Error('Multiple compatible backends found.');
+      error.code = 'backend.multiple_candidates';
+      error.filePath = filePath;
+      error.probe = { containerType: 'pak' };
+      error.candidates = candidates;
+      throw error;
+    },
+  };
+  const handlers = createIpcHandlers({ state });
+
+  const result = await handlers.analyze(filePath);
+
+  assert.deepEqual(result.backendSelection, {
+    filePath,
+    probe: { containerType: 'pak' },
+    candidates,
+  });
+  assert.deepEqual(state.pendingBackendSelections.get(filePath), {
+    candidates,
+    candidateIds: new Set(candidates.map((candidate) => candidate.id)),
+  });
+});
+
+test('backend:choose rejects selections without pending candidates', () => {
+  const state = createDesktopState();
+  const handlers = createIpcHandlers({ state });
+
+  const result = handlers.chooseBackend({
+    filePath: 'C:\\Paks\\pakchunk0-Windows.pak',
+    selectedId: 'ue-5.7.4-win32-x64-development',
+  });
+
+  assert.equal(result, '');
+  assert.equal(state.backendSelections.size, 0);
+});
+
+test('backend:choose rejects ids outside pending candidates and preserves pending choice', () => {
+  const filePath = 'C:\\Paks\\pakchunk0-Windows.pak';
+  const state = createDesktopState({
+    pendingBackendSelections: new Map([[
+      filePath,
+      {
+        candidates: [{ id: 'ue-5.7.4-win32-x64-development', label: 'UE 5.7.4 Development' }],
+        candidateIds: new Set(['ue-5.7.4-win32-x64-development']),
+      },
+    ]]),
+  });
+  const handlers = createIpcHandlers({ state });
+
+  const result = handlers.chooseBackend({
+    filePath,
+    selectedId: 'ue-5.7.4-win32-x64-shipping',
+  });
+
+  assert.equal(result, '');
+  assert.equal(state.backendSelections.size, 0);
+  assert.equal(state.pendingBackendSelections.has(filePath), true);
+});
+
+test('backend:choose clears pending selection on cancel', () => {
+  const filePath = 'C:\\Paks\\pakchunk0-Windows.pak';
+  const state = createDesktopState({
+    pendingBackendSelections: new Map([[
+      filePath,
+      {
+        candidates: [{ id: 'ue-5.7.4-win32-x64-development', label: 'UE 5.7.4 Development' }],
+        candidateIds: new Set(['ue-5.7.4-win32-x64-development']),
+      },
+    ]]),
+  });
+  const handlers = createIpcHandlers({ state });
+
+  const result = handlers.chooseBackend({ filePath, selectedId: '' });
+
+  assert.equal(result, '');
+  assert.equal(state.pendingBackendSelections.has(filePath), false);
+  assert.equal(state.backendSelections.size, 0);
 });
 
 test('backend:getInfo returns an empty registry summary before routing initialization', () => {

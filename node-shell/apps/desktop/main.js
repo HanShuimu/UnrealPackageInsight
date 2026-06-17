@@ -58,11 +58,13 @@ function createDesktopState({
   backendClientProvider = null,
   backendRegistrySummary = { status: 'OK', backendCount: 0, backends: [] },
   backendSelections = new Map(),
+  pendingBackendSelections = new Map(),
   aesSession = new AesKeySession(),
 } = {}) {
   return {
     aesSession,
     backendSelections,
+    pendingBackendSelections,
     backendClientProvider,
     backendRegistrySummary,
     currentScan: null,
@@ -114,6 +116,11 @@ function createIpcHandlers({
         result = await state.analysisService.analyze(filePath);
       } catch (error) {
         if (error.code === 'backend.multiple_candidates') {
+          const candidates = Array.isArray(error.candidates) ? error.candidates : [];
+          state.pendingBackendSelections.set(error.filePath, {
+            candidates,
+            candidateIds: new Set(candidates.map((candidate) => candidate.id)),
+          });
           return {
             status: 'Error',
             issues: [{
@@ -172,13 +179,24 @@ function createIpcHandlers({
 
     chooseBackend(request) {
       const selectedId = request?.selectedId || '';
-      if (!selectedId) {
+      const filePath = request?.filePath || '';
+      if (!filePath) {
         return '';
       }
-      state.backendSelections.set(request.filePath, selectedId);
-      if (state.backendClientProvider && typeof state.backendClientProvider.setSelection === 'function') {
-        state.backendClientProvider.setSelection(request.filePath, selectedId);
+      if (!selectedId) {
+        state.pendingBackendSelections.delete(filePath);
+        return '';
       }
+      const pending = state.pendingBackendSelections.get(filePath);
+      const candidateIds = pending?.candidateIds || new Set((pending?.candidates || []).map((candidate) => candidate.id));
+      if (!pending || !candidateIds.has(selectedId)) {
+        return '';
+      }
+      state.backendSelections.set(filePath, selectedId);
+      if (state.backendClientProvider && typeof state.backendClientProvider.setSelection === 'function') {
+        state.backendClientProvider.setSelection(filePath, selectedId);
+      }
+      state.pendingBackendSelections.delete(filePath);
       return selectedId;
     },
   };
