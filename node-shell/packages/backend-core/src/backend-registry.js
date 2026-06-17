@@ -13,6 +13,19 @@ function assertManifest(manifest, manifestPath) {
   }
 }
 
+function assertHostCompatibility(manifest, manifestPath, platform, arch) {
+  const mismatches = [];
+  if (manifest.hostPlatform !== platform) {
+    mismatches.push(`hostPlatform expected ${platform} got ${manifest.hostPlatform}`);
+  }
+  if (manifest.hostArch !== arch) {
+    mismatches.push(`hostArch expected ${arch} got ${manifest.hostArch}`);
+  }
+  if (mismatches.length > 0) {
+    throw new Error(`backend.manifest_invalid: ${manifestPath} (${manifest.id}) ${mismatches.join(', ')}`);
+  }
+}
+
 function findManifestFiles(root, files = []) {
   if (!fs.existsSync(root)) {
     return files;
@@ -38,8 +51,9 @@ function loadBackendManifests({
     .map((manifestPath) => {
       const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
       assertManifest(manifest, manifestPath);
+      assertHostCompatibility(manifest, manifestPath, platform, arch);
       const dllPath = path.resolve(path.dirname(manifestPath), manifest.dll);
-      if (!fs.existsSync(dllPath)) {
+      if (!fs.existsSync(dllPath) || !fs.statSync(dllPath).isFile()) {
         throw new Error(`backend.manifest_invalid: DLL missing for ${manifest.id}: ${dllPath}`);
       }
       return { ...manifest, dllPath, manifestPath };

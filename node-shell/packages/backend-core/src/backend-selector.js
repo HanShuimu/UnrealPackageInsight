@@ -21,7 +21,7 @@ function configurationRank(configuration) {
 }
 
 function sortBackendCandidates(manifests) {
-  return manifests.sort((left, right) => (
+  return [...manifests].sort((left, right) => (
     configurationRank(left.configuration) - configurationRank(right.configuration)
     || compareVersions(right.engineVersion, left.engineVersion)
     || left.id.localeCompare(right.id)
