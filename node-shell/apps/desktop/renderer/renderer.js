@@ -32,6 +32,12 @@ function bindElements() {
   elements.aesMessage = document.getElementById('aes-message');
   elements.aesSubmit = document.getElementById('aes-submit');
   elements.aesCancel = document.getElementById('aes-cancel');
+  elements.backendDialog = document.getElementById('backend-dialog');
+  elements.backendForm = document.getElementById('backend-form');
+  elements.backendMessage = document.getElementById('backend-message');
+  elements.backendOptions = document.getElementById('backend-options');
+  elements.backendCancel = document.getElementById('backend-cancel');
+  elements.backendSubmit = document.getElementById('backend-submit');
 }
 
 function bindEvents() {
@@ -203,6 +209,17 @@ async function analyzeFile(filePath) {
       return;
     }
 
+    if (result?.backendSelection) {
+      const selectedBackendId = await chooseBackend(result.backendSelection);
+      if (selectedBackendId && isCurrentAnalysis(filePath, requestId)) {
+        analyzeFile(filePath);
+      } else {
+        renderAnalysis(result);
+        setStatus('Backend selection canceled');
+      }
+      return;
+    }
+
     if (hasAesRetryIssue(result)) {
       renderAnalysis(result);
       keepAesDialogOpenForIssue(filePath, result);
@@ -219,6 +236,52 @@ async function analyzeFile(filePath) {
     renderAnalysis(createErrorResult('renderer.analysis_failed', error));
     setStatus('Analysis failed');
   }
+}
+
+async function chooseBackend(request) {
+  replaceChildren(elements.backendOptions);
+  elements.backendMessage.textContent = `${request.containerLabel || 'Container'} requires a backend.`;
+
+  for (const candidate of request.candidates || []) {
+    const label = document.createElement('label');
+    label.className = 'backend-option';
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = 'backend';
+    input.value = candidate.id;
+    if (!elements.backendOptions.querySelector('input[name="backend"]')) {
+      input.checked = true;
+    }
+    const text = document.createElement('span');
+    text.textContent = `${candidate.label} (${candidate.id})`;
+    label.append(input, text);
+    elements.backendOptions.appendChild(label);
+  }
+
+  const selectedId = await new Promise((resolve) => {
+    const submit = (event) => {
+      event.preventDefault();
+      const selected = elements.backendOptions.querySelector('input[name="backend"]:checked');
+      cleanup();
+      resolve(selected ? selected.value : '');
+    };
+    const cancel = () => {
+      cleanup();
+      resolve('');
+    };
+    const cleanup = () => {
+      elements.backendForm.removeEventListener('submit', submit);
+      elements.backendCancel.removeEventListener('click', cancel);
+      if (elements.backendDialog.open) {
+        elements.backendDialog.close();
+      }
+    };
+    elements.backendForm.addEventListener('submit', submit);
+    elements.backendCancel.addEventListener('click', cancel);
+    elements.backendDialog.showModal();
+  });
+
+  return window.upi.chooseBackend({ ...request, selectedId });
 }
 
 function isCurrentAnalysis(filePath, requestId) {

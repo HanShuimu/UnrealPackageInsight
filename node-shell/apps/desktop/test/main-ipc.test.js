@@ -8,24 +8,88 @@ const {
   startDesktopApp,
 } = require('../main.js');
 
-test('backend:getInfo returns backend.not_ready before initialization', () => {
+test('backend:getInfo returns registry summary before any DLL is loaded', () => {
+  const state = createDesktopState({
+    backendRegistrySummary: {
+      status: 'OK',
+      backendCount: 1,
+      backends: [{ id: 'ue-5.7.4-win32-x64-development', label: 'UE 5.7.4 Development' }],
+    },
+  });
+  const handlers = createIpcHandlers({ state });
+
+  assert.deepEqual(handlers.getBackendInfo(), {
+    status: 'OK',
+    backendCount: 1,
+    backends: [{ id: 'ue-5.7.4-win32-x64-development', label: 'UE 5.7.4 Development' }],
+  });
+});
+
+test('package:openDirectory creates AnalysisService with backendClientProvider', async () => {
+  const backendClientProvider = { resolveForFile() {} };
+  const state = createDesktopState({ backendClientProvider });
+  const created = [];
+  class FakeAnalysisService {
+    constructor(options) {
+      created.push(options);
+    }
+  }
+  const handlers = createIpcHandlers({
+    state,
+    dialog: { async showOpenDialog() { return { canceled: false, filePaths: ['C:\\Paks'] }; } },
+    scanPackageDirectory: async () => ({
+      root: 'C:\\Paks',
+      files: [{ path: 'C:\\Paks\\pakchunk0-Windows.pak' }],
+      tree: { name: 'Paks', path: 'C:\\Paks', kind: 'directory', children: [] },
+    }),
+    AnalysisService: FakeAnalysisService,
+  });
+
+  await handlers.openPackageDirectory();
+
+  assert.equal(created[0].backendClientProvider, backendClientProvider);
+});
+
+test('backend:choose stores selected backend for a file and updates provider', () => {
+  const providerSelections = [];
+  const state = createDesktopState({
+    backendClientProvider: {
+      setSelection(filePath, backendId) {
+        providerSelections.push({ filePath, backendId });
+      },
+    },
+  });
+  const handlers = createIpcHandlers({ state });
+  const request = {
+    filePath: 'C:\\Paks\\pakchunk0-Windows.pak',
+    selectedId: 'ue-5.7.4-win32-x64-development',
+  };
+
+  const result = handlers.chooseBackend(request);
+
+  assert.equal(result, request.selectedId);
+  assert.equal(state.backendSelections.get(request.filePath), request.selectedId);
+  assert.deepEqual(providerSelections, [{
+    filePath: request.filePath,
+    backendId: request.selectedId,
+  }]);
+});
+
+test('backend:getInfo returns an empty registry summary before routing initialization', () => {
   const state = createDesktopState();
   const handlers = createIpcHandlers({ state });
 
   const result = handlers.getBackendInfo();
 
   assert.deepEqual(result, {
-    status: 'Error',
-    issues: [{
-      severity: 'error',
-      code: 'backend.not_ready',
-      message: 'Backend is not initialized.',
-    }],
+    status: 'OK',
+    backendCount: 0,
+    backends: [],
   });
 });
 
 test('analysis:analyze returns package.not_open before a package directory is opened', async () => {
-  const state = createDesktopState({ backendClient: { getBackendInfo() {} } });
+  const state = createDesktopState();
   const handlers = createIpcHandlers({ state });
 
   const result = await handlers.analyze('C:\\Game\\Content\\Paks\\pakchunk0-Windows.pak');
@@ -41,8 +105,8 @@ test('analysis:analyze returns package.not_open before a package directory is op
 });
 
 test('package:openDirectory scans the selected directory and creates analysis service', async () => {
-  const backendClient = { getBackendInfo() {} };
-  const state = createDesktopState({ backendClient });
+  const backendClientProvider = { resolveForFile() {} };
+  const state = createDesktopState({ backendClientProvider });
   const scan = {
     root: 'C:\\Game\\Content\\Paks',
     files: [{ path: 'C:\\Game\\Content\\Paks\\pakchunk0-Windows.pak' }],
@@ -78,11 +142,11 @@ test('package:openDirectory scans the selected directory and creates analysis se
   assert.equal(result, scan);
   assert.equal(state.currentScan, scan);
   assert.deepEqual(createdServices.map((options) => ({
-    backendClient: options.backendClient,
+    backendClientProvider: options.backendClientProvider,
     filePaths: options.filePaths,
     aesSession: options.aesSession,
   })), [{
-    backendClient,
+    backendClientProvider,
     filePaths: [scan.files[0].path],
     aesSession: state.aesSession,
   }]);
@@ -90,7 +154,7 @@ test('package:openDirectory scans the selected directory and creates analysis se
 });
 
 test('package:openDirectory returns null when directory selection is canceled', async () => {
-  const state = createDesktopState({ backendClient: { getBackendInfo() {} } });
+  const state = createDesktopState();
   const handlers = createIpcHandlers({
     state,
     dialog: {
@@ -112,7 +176,7 @@ test('package:openDirectory returns null when directory selection is canceled', 
 
 test('analysis:submitAesKeyAndRetry stores valid AES keys, retries, and reports invalid keys safely', async () => {
   const calls = [];
-  const state = createDesktopState({ backendClient: { getBackendInfo() {} } });
+  const state = createDesktopState();
   state.analysisService = {
     async analyze(filePath) {
       calls.push({ filePath, aesKey: state.aesSession.getKey() });
@@ -141,7 +205,7 @@ test('analysis:submitAesKeyAndRetry stores valid AES keys, retries, and reports 
 });
 
 test('analysis:submitAesKeyAndRetry clears keys rejected by backend AES validation', async () => {
-  const state = createDesktopState({ backendClient: { getBackendInfo() {} } });
+  const state = createDesktopState();
   state.analysisService = {
     async analyze() {
       return {
@@ -185,7 +249,7 @@ test('analysis:analyze clears session keys rejected by backend AES validation', 
   ];
 
   for (const issue of cases) {
-    const state = createDesktopState({ backendClient: { getBackendInfo() {} } });
+    const state = createDesktopState();
     state.aesSession.setKey('abcdefabcdefabcdefabcdefabcdefab');
     state.analysisService = {
       async analyze() {
@@ -269,7 +333,7 @@ test('startDesktopApp shows an error dialog and quits when startup initializatio
     BrowserWindowClass: { getAllWindows: () => [] },
     dialog,
     ipcMain,
-    initializeBackendClient: () => {
+    initializeBackendRouting: () => {
       throw new Error('DLL missing');
     },
     createWindow: () => {
@@ -283,6 +347,7 @@ test('startDesktopApp shows an error dialog and quits when startup initializatio
   }]);
   assert.equal(quitCount, 1);
   assert.equal(handled.has('backend:getInfo'), true);
+  assert.equal(handled.has('backend:choose'), true);
   assert.equal(appEvents.has('window-all-closed'), true);
 });
 
@@ -312,7 +377,7 @@ test('startDesktopApp catches asynchronous createWindow load failures and quits'
     BrowserWindowClass: { getAllWindows: () => [] },
     dialog,
     ipcMain,
-    initializeBackendClient: () => ({ getBackendInfo() {} }),
+    initializeBackendRouting: () => ({}),
     createWindow: () => Promise.reject(new Error('renderer missing')),
   });
 
