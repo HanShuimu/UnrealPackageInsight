@@ -1,6 +1,16 @@
 const GET_MODULE_HANDLE_EX_FLAG_PIN = 0x00000001;
 const GET_MODULE_HANDLE_EX_W_SIGNATURE =
   'bool __stdcall GetModuleHandleExW(uint32_t dwFlags, const char16_t *lpModuleName, _Out_ HMODULE *phModule)';
+const hmoduleTypeByKoffi = new WeakMap();
+
+function getHModuleType(koffi) {
+  let hmoduleType = hmoduleTypeByKoffi.get(koffi);
+  if (!hmoduleType) {
+    hmoduleType = koffi.pointer('HMODULE', koffi.opaque());
+    hmoduleTypeByKoffi.set(koffi, hmoduleType);
+  }
+  return hmoduleType;
+}
 
 function pinBackendDllOnWindows({ dllPath, koffi, platform }) {
   if (platform !== 'win32' || !dllPath) {
@@ -8,7 +18,7 @@ function pinBackendDllOnWindows({ dllPath, koffi, platform }) {
   }
 
   const kernel32 = koffi.load('kernel32.dll');
-  const HMODULE = koffi.pointer('HMODULE', koffi.opaque());
+  const HMODULE = getHModuleType(koffi);
   const getModuleHandleExW = kernel32.func(GET_MODULE_HANDLE_EX_W_SIGNATURE);
   const outHandle = [null];
   const pinned = getModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_PIN, dllPath, outHandle);

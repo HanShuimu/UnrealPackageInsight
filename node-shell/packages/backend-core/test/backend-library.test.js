@@ -96,6 +96,59 @@ test('loadBackendLibrary pins the backend DLL on Windows before registering expo
   ]);
 });
 
+test('loadBackendLibrary reuses the Windows HMODULE type across repeated loads', () => {
+  const events = [];
+  let hmoduleRegistered = false;
+  const koffi = {
+    load(dllPath) {
+      events.push(['load', dllPath]);
+      if (dllPath === 'kernel32.dll') {
+        return {
+          func(signature) {
+            events.push(['kernel-func', signature]);
+            return (flags, moduleName, outHandle) => {
+              events.push(['pin', flags, moduleName, Array.isArray(outHandle)]);
+              outHandle[0] = `pinned:${moduleName}`;
+              return true;
+            };
+          },
+        };
+      }
+
+      return {
+        func(signature) {
+          events.push(['backend-func', dllPath, signature]);
+          return () => {};
+        },
+      };
+    },
+    opaque() {
+      events.push(['opaque']);
+      return 'opaque';
+    },
+    pointer(name, type) {
+      events.push(['pointer', name, type]);
+      if (name === 'HMODULE' && hmoduleRegistered) {
+        throw new Error("Duplicate type name 'HMODULE'");
+      }
+      hmoduleRegistered = true;
+      return 'hmodule-pointer';
+    },
+  };
+
+  loadBackendLibrary({ dllPath: 'debug-backend.dll', koffi, platform: 'win32' });
+  loadBackendLibrary({ dllPath: 'development-backend.dll', koffi, platform: 'win32' });
+
+  assert.deepEqual(
+    events.filter((event) => event[0] === 'pointer'),
+    [['pointer', 'HMODULE', 'opaque']],
+  );
+  assert.deepEqual(
+    events.filter((event) => event[0] === 'pin').map((event) => event[2]),
+    ['debug-backend.dll', 'development-backend.dll'],
+  );
+});
+
 test('loadBackendLibrary throws when Windows DLL pinning fails', () => {
   const events = [];
   const koffi = {
