@@ -118,11 +118,15 @@ point is:
 npm run build -- --engine-root C:\WORKSPACE_UE\UnrealEngine
 ```
 
-`build` is an alias for the default native backend build configuration, `Development`.
-Configuration-specific commands are also exposed:
+`build` is an alias for the full native backend build matrix. It builds `Debug`, `Development`,
+and `Shipping` for the supplied EngineRoot, producing three staged backend directories under
+the same `ue-<major.minor.patch>` version folder. `build:native` has the same full-matrix
+behavior.
+
+Configuration-specific commands are also exposed for faster local iteration:
 
 ```text
-npm run build:native -- --engine-root C:\WORKSPACE_UE\UnrealEngine --configuration Development
+npm run build:native -- --engine-root C:\WORKSPACE_UE\UnrealEngine
 npm run build:native:debug -- --engine-root C:\WORKSPACE_UE\UnrealEngine
 npm run build:native:development -- --engine-root C:\WORKSPACE_UE\UnrealEngine
 npm run build:native:shipping -- --engine-root C:\WORKSPACE_UE\UnrealEngine
@@ -140,6 +144,8 @@ use EngineRoot to run.
    node scripts/build-native-backend.js --engine-root C:\WORKSPACE_UE\UnrealEngine --configuration Development
    ```
 
+   If `--configuration` is omitted, build all supported configurations: `Debug`, `Development`,
+   and `Shipping`.
 2. Read `<EngineRoot>/Engine/Build/Build.version` and derive `engineVersion` as
    `major.minor.patch` from `MajorVersion`, `MinorVersion`, and `PatchVersion`. If any of
    those fields are missing or non-numeric, fail the build script with a clear error.
