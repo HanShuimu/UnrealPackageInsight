@@ -131,6 +131,28 @@ test('assertProgramGeneratedProtocolHeaders requires every generated C++ protoco
   );
 });
 
+test('assertProgramGeneratedProtocolHeaders rejects a required header path that is a directory', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-generated-protocol-dir-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const generatedProtocolDir = path.join(root, 'Generated', 'Protocol');
+  fs.mkdirSync(generatedProtocolDir, { recursive: true });
+  const directoryHeaderName = 'upi_iostore_analysis_generated.h';
+
+  for (const fileName of REQUIRED_GENERATED_PROTOCOL_HEADERS) {
+    const filePath = path.join(generatedProtocolDir, fileName);
+    if (fileName === directoryHeaderName) {
+      fs.mkdirSync(filePath);
+    } else {
+      fs.writeFileSync(filePath, fileName);
+    }
+  }
+
+  assert.throws(
+    () => assertProgramGeneratedProtocolHeaders(generatedProtocolDir),
+    /Generated protocol C\+\+ header missing: .*upi_iostore_analysis_generated\.h/,
+  );
+});
+
 test('findBuiltDll discovers the newest backend DLL under Engine/Binaries/Win64', (t) => {
   const engineRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-built-dll-'));
   t.after(() => fs.rmSync(engineRoot, { recursive: true, force: true }));
@@ -427,7 +449,7 @@ test('buildNativeBackends stages and builds all configurations by default', (t) 
     'UnrealPackageInsightBackend',
     'UnrealPackageInsightBackend.Target.cs',
   )), true);
-  assert.equal(fs.existsSync(path.join(
+  const stagedGeneratedProtocolDir = path.join(
     engineRoot,
     'Engine',
     'Source',
@@ -437,8 +459,10 @@ test('buildNativeBackends stages and builds all configurations by default', (t) 
     'UnrealPackageInsightBackend',
     'Generated',
     'Protocol',
-    'upi_common_generated.h',
-  )), true);
+  );
+  for (const fileName of REQUIRED_GENERATED_PROTOCOL_HEADERS) {
+    assert.equal(fs.existsSync(path.join(stagedGeneratedProtocolDir, fileName)), true);
+  }
   for (const entry of result) {
     assert.equal(fs.existsSync(path.join(entry.nativeDir, 'backend.json')), true);
     assert.equal(fs.existsSync(path.join(entry.nativeDir, 'UnrealPackageInsightBackend.dll')), true);
