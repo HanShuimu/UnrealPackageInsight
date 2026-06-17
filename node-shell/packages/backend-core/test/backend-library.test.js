@@ -1,0 +1,162 @@
+const assert = require('node:assert/strict');
+const test = require('node:test');
+
+const { loadBackendLibrary } = require('../src/backend-library.js');
+
+test('loadBackendLibrary registers the expected V1 export signatures', () => {
+  const signatures = [];
+  const exports = {
+    'int UPI_GetBackendInfoV1(void*, int, void*)': () => {},
+    'int UPI_AnalyzePakV1(str, str, void*, int, void*)': () => {},
+    'int UPI_AnalyzeIoStoreV1(str, str, str, void*, int, void*)': () => {},
+  };
+  const koffi = {
+    load(dllPath) {
+      assert.equal(dllPath, 'backend.dll');
+      return {
+        func(signature) {
+          signatures.push(signature);
+          return exports[signature];
+        },
+      };
+    },
+  };
+
+  const library = loadBackendLibrary({ dllPath: 'backend.dll', koffi, platform: 'linux' });
+
+  assert.deepEqual(signatures, [
+    'int UPI_GetBackendInfoV1(void*, int, void*)',
+    'int UPI_AnalyzePakV1(str, str, void*, int, void*)',
+    'int UPI_AnalyzeIoStoreV1(str, str, str, void*, int, void*)',
+  ]);
+  assert.equal(library.getBackendInfoV1, exports['int UPI_GetBackendInfoV1(void*, int, void*)']);
+  assert.equal(library.analyzePakV1, exports['int UPI_AnalyzePakV1(str, str, void*, int, void*)']);
+  assert.equal(
+    library.analyzeIoStoreV1,
+    exports['int UPI_AnalyzeIoStoreV1(str, str, str, void*, int, void*)']
+  );
+});
+
+test('loadBackendLibrary pins the backend DLL on Windows before registering exports', () => {
+  const events = [];
+  const exports = {
+    'int UPI_GetBackendInfoV1(void*, int, void*)': () => {},
+    'int UPI_AnalyzePakV1(str, str, void*, int, void*)': () => {},
+    'int UPI_AnalyzeIoStoreV1(str, str, str, void*, int, void*)': () => {},
+  };
+  const koffi = {
+    load(dllPath) {
+      events.push(['load', dllPath]);
+      if (dllPath === 'kernel32.dll') {
+        return {
+          func(signature) {
+            events.push(['kernel-func', signature]);
+            return (flags, moduleName, outHandle) => {
+              events.push(['pin', flags, moduleName, Array.isArray(outHandle)]);
+              outHandle[0] = 'backend-hmodule';
+              return true;
+            };
+          },
+        };
+      }
+
+      assert.equal(dllPath, 'backend.dll');
+      return {
+        func(signature) {
+          events.push(['backend-func', signature]);
+          return exports[signature];
+        },
+      };
+    },
+    opaque() {
+      events.push(['opaque']);
+      return 'opaque';
+    },
+    pointer(name, type) {
+      events.push(['pointer', name, type]);
+      return 'hmodule-pointer';
+    },
+  };
+
+  loadBackendLibrary({ dllPath: 'backend.dll', koffi, platform: 'win32' });
+
+  assert.deepEqual(events, [
+    ['load', 'backend.dll'],
+    ['load', 'kernel32.dll'],
+    ['opaque'],
+    ['pointer', 'HMODULE', 'opaque'],
+    [
+      'kernel-func',
+      'bool __stdcall GetModuleHandleExW(uint32_t dwFlags, const char16_t *lpModuleName, _Out_ HMODULE *phModule)',
+    ],
+    ['pin', 1, 'backend.dll', true],
+    ['backend-func', 'int UPI_GetBackendInfoV1(void*, int, void*)'],
+    ['backend-func', 'int UPI_AnalyzePakV1(str, str, void*, int, void*)'],
+    ['backend-func', 'int UPI_AnalyzeIoStoreV1(str, str, str, void*, int, void*)'],
+  ]);
+});
+
+test('loadBackendLibrary throws when Windows DLL pinning fails', () => {
+  const events = [];
+  const koffi = {
+    load(dllPath) {
+      events.push(['load', dllPath]);
+      if (dllPath === 'kernel32.dll') {
+        return {
+          func(signature) {
+            events.push(['kernel-func', signature]);
+            return () => {
+              events.push(['pin']);
+              return false;
+            };
+          },
+        };
+      }
+
+      return {
+        func(signature) {
+          events.push(['backend-func', signature]);
+          return () => {};
+        },
+      };
+    },
+    opaque() {
+      return 'opaque';
+    },
+    pointer() {
+      return 'hmodule-pointer';
+    },
+  };
+
+  assert.throws(
+    () => loadBackendLibrary({ dllPath: 'backend.dll', koffi, platform: 'win32' }),
+    /Unable to pin backend DLL.*backend\.dll/
+  );
+  assert.deepEqual(events, [
+    ['load', 'backend.dll'],
+    ['load', 'kernel32.dll'],
+    [
+      'kernel-func',
+      'bool __stdcall GetModuleHandleExW(uint32_t dwFlags, const char16_t *lpModuleName, _Out_ HMODULE *phModule)',
+    ],
+    ['pin'],
+  ]);
+});
+
+test('loadBackendLibrary skips Windows DLL pinning on non-Windows platforms', () => {
+  const loaded = [];
+  const koffi = {
+    load(dllPath) {
+      loaded.push(dllPath);
+      return {
+        func() {
+          return () => {};
+        },
+      };
+    },
+  };
+
+  loadBackendLibrary({ dllPath: 'backend.dll', koffi, platform: 'linux' });
+
+  assert.deepEqual(loaded, ['backend.dll']);
+});

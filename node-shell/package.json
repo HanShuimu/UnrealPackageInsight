@@ -3,11 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "type": "commonjs",
+  "main": "bin/upi-gui.js",
   "scripts": {
-    "test": "node --test",
-    "call-backend": "node src/index.js"
+    "test": "node --test \"test/*.test.js\" \"packages/protocol/test/*.test.js\" \"packages/backend-core/test/*.test.js\" \"packages/analysis-domain/test/*.test.js\" \"apps/desktop/test/*.test.js\"",
+    "call-backend": "node src/index.js",
+    "generate-protocol": "powershell -ExecutionPolicy Bypass -File ../scripts/generate-protocol.ps1",
+    "gui": "node bin/upi-gui.js",
+    "cli": "node bin/upi-cli.js"
   },
   "dependencies": {
+    "electron": "^31.0.0",
+    "flatbuffers": "^24.3.25",
     "koffi": "3.0.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
   }
 }
