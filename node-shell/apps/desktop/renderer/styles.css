@@ -270,7 +270,8 @@ tr:last-child td {
   color: var(--muted);
 }
 
-.aes-dialog {
+.aes-dialog,
+.backend-dialog {
   width: min(460px, calc(100vw - 40px));
   padding: 0;
   border: 1px solid var(--border-strong);
@@ -280,17 +281,20 @@ tr:last-child td {
   box-shadow: var(--shadow);
 }
 
-.aes-dialog::backdrop {
+.aes-dialog::backdrop,
+.backend-dialog::backdrop {
   background: rgba(16, 24, 38, 0.35);
 }
 
-.aes-dialog form {
+.aes-dialog form,
+.backend-dialog form {
   display: grid;
   gap: 10px;
   padding: 18px;
 }
 
-.aes-dialog h2 {
+.aes-dialog h2,
+.backend-dialog h2 {
   margin: 0;
   font-size: 16px;
 }
@@ -311,6 +315,34 @@ tr:last-child td {
   padding: 8px 9px;
   border: 1px solid var(--border-strong);
   border-radius: 5px;
+}
+
+.backend-options {
+  display: grid;
+  gap: 8px;
+  max-height: min(320px, calc(100vh - 220px));
+  overflow: auto;
+}
+
+.backend-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: #354255;
+  font-weight: 600;
+}
+
+.backend-option input {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.backend-option span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .dialog-actions {

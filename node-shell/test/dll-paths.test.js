@@ -2,7 +2,6 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const {
-  DEFAULT_ENGINE_ROOT,
   WINDOWS_PATH_DELIMITER,
   resolveDllPath,
   buildDllSearchPath,
@@ -20,7 +19,7 @@ test('resolveDllPath keeps an absolute DLL argument unchanged', () => {
 });
 
 test('resolveDllPath throws a usage error when the DLL path is missing or blank', () => {
-  const usagePattern = /Usage: node src[\\/]index\.js <path-to-backend-dll>/;
+  const usagePattern = /Backend DLL path is required/;
 
   assert.throws(() => resolveDllPath(), usagePattern);
   assert.throws(() => resolveDllPath(undefined), usagePattern);
@@ -35,12 +34,17 @@ test('getEngineWin64BinariesDir resolves from an explicit engine root', () => {
   );
 });
 
-test('getEngineWin64BinariesDir resolves from the default engine root', () => {
-  assert.equal(DEFAULT_ENGINE_ROOT, 'C:\\WORKSPACE_UE\\UnrealEngine');
-  assert.equal(
-    getEngineWin64BinariesDir(),
-    'C:\\WORKSPACE_UE\\UnrealEngine\\Engine\\Binaries\\Win64'
-  );
+test('getEngineWin64BinariesDir requires an explicit engine root', () => {
+  assert.throws(() => getEngineWin64BinariesDir(), /engineRoot is required/);
+  assert.throws(() => getEngineWin64BinariesDir(''), /engineRoot is required/);
+  assert.throws(() => getEngineWin64BinariesDir('   '), /engineRoot is required/);
+});
+
+test('buildDllSearchPath requires an explicit engine root', () => {
+  assert.throws(() => buildDllSearchPath({
+    dllPath: 'C:\\backend\\UnrealPackageInsightBackend.dll',
+    existingPath: '',
+  }), /engineRoot is required/);
 });
 
 test('buildDllSearchPath prepends the DLL directory and engine Win64 binaries', () => {

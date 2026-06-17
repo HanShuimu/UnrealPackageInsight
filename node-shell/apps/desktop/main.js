@@ -3,11 +3,15 @@ const path = require('node:path');
 const electron = require('electron');
 const koffi = require('koffi');
 
-const { createBackendClient } = require('../../packages/backend-core/src/backend-client.js');
-const { resolveDllPath } = require('../../src/dll-paths.js');
+const {
+  loadBackendManifests,
+  summarizeBackends,
+} = require('../../packages/backend-core/src/backend-registry.js');
+const { createBackendClientProvider } = require('../../packages/backend-core/src/backend-client-provider.js');
 const { scanPackageDirectory } = require('../../packages/analysis-domain/src/package-scan.js');
 const { AnalysisService } = require('../../packages/analysis-domain/src/analysis-service.js');
 const { AesKeySession } = require('../../packages/analysis-domain/src/aes-key-session.js');
+const { probeContainerFile } = require('../../packages/analysis-domain/src/container-probe.js');
 
 const {
   app,
@@ -22,15 +26,6 @@ const PACKAGE_NOT_OPEN_RESPONSE = {
     severity: 'error',
     code: 'package.not_open',
     message: 'Open a package directory before analyzing files.',
-  }],
-};
-
-const BACKEND_NOT_READY_RESPONSE = {
-  status: 'Error',
-  issues: [{
-    severity: 'error',
-    code: 'backend.not_ready',
-    message: 'Backend is not initialized.',
   }],
 };
 
@@ -59,10 +54,19 @@ function hasBackendAesRejection(response) {
   }));
 }
 
-function createDesktopState({ backendClient = null, aesSession = new AesKeySession() } = {}) {
+function createDesktopState({
+  backendClientProvider = null,
+  backendRegistrySummary = { status: 'OK', backendCount: 0, backends: [] },
+  backendSelections = new Map(),
+  pendingBackendSelections = new Map(),
+  aesSession = new AesKeySession(),
+} = {}) {
   return {
     aesSession,
-    backendClient,
+    backendSelections,
+    pendingBackendSelections,
+    backendClientProvider,
+    backendRegistrySummary,
     currentScan: null,
     analysisService: null,
   };
@@ -80,11 +84,7 @@ function createIpcHandlers({
 
   return {
     getBackendInfo() {
-      if (!state.backendClient) {
-        return cloneResponse(BACKEND_NOT_READY_RESPONSE);
-      }
-
-      return state.backendClient.getBackendInfo();
+      return state.backendRegistrySummary;
     },
 
     async openPackageDirectory() {
@@ -98,7 +98,7 @@ function createIpcHandlers({
 
       state.currentScan = await scanPackageDirectoryFn(selection.filePaths[0]);
       state.analysisService = new AnalysisServiceClass({
-        backendClient: state.backendClient,
+        backendClientProvider: state.backendClientProvider,
         filePaths: state.currentScan.files.map((file) => file.path),
         aesSession: state.aesSession,
       });
@@ -111,7 +111,42 @@ function createIpcHandlers({
         return cloneResponse(PACKAGE_NOT_OPEN_RESPONSE);
       }
 
-      const result = await state.analysisService.analyze(filePath);
+      let result;
+      try {
+        result = await state.analysisService.analyze(filePath);
+      } catch (error) {
+        if (error.code === 'backend.multiple_candidates') {
+          const candidates = Array.isArray(error.candidates) ? error.candidates : [];
+          state.pendingBackendSelections.set(error.filePath, {
+            candidates,
+            candidateIds: new Set(candidates.map((candidate) => candidate.id)),
+          });
+          return {
+            status: 'Error',
+            issues: [{
+              severity: 'error',
+              code: 'backend.multiple_candidates',
+              message: error.message,
+            }],
+            backendSelection: {
+              filePath: error.filePath,
+              probe: error.probe,
+              candidates: error.candidates,
+            },
+          };
+        }
+        if (error.code === 'backend.no_compatible_backend') {
+          return {
+            status: 'Error',
+            issues: [{
+              severity: 'error',
+              code: 'backend.no_compatible_backend',
+              message: error.message,
+            }],
+          };
+        }
+        throw error;
+      }
       if (hasBackendAesRejection(result)) {
         state.aesSession.clear();
       }
@@ -141,6 +176,29 @@ function createIpcHandlers({
       state.aesSession.clear();
       return true;
     },
+
+    chooseBackend(request) {
+      const selectedId = request?.selectedId || '';
+      const filePath = request?.filePath || '';
+      if (!filePath) {
+        return '';
+      }
+      if (!selectedId) {
+        state.pendingBackendSelections.delete(filePath);
+        return '';
+      }
+      const pending = state.pendingBackendSelections.get(filePath);
+      const candidateIds = pending?.candidateIds || new Set((pending?.candidates || []).map((candidate) => candidate.id));
+      if (!pending || !candidateIds.has(selectedId)) {
+        return '';
+      }
+      state.backendSelections.set(filePath, selectedId);
+      if (state.backendClientProvider && typeof state.backendClientProvider.setSelection === 'function') {
+        state.backendClientProvider.setSelection(filePath, selectedId);
+      }
+      state.pendingBackendSelections.delete(filePath);
+      return selectedId;
+    },
   };
 }
 
@@ -152,6 +210,7 @@ function registerIpcHandlers(ipcMainModule, handlers) {
     handlers.submitAesKeyAndRetry(filePath, aesKey)
   ));
   ipcMainModule.handle('analysis:clearAesKey', () => handlers.clearAesKey());
+  ipcMainModule.handle('backend:choose', (_event, request) => handlers.chooseBackend(request));
 }
 
 const desktopState = createDesktopState();
@@ -173,15 +232,23 @@ async function createWindow({ BrowserWindowClass = BrowserWindow } = {}) {
   return window;
 }
 
-function initializeBackendClient({
+function initializeBackendRouting({
   state = desktopState,
-  env = process.env,
   koffiModule = koffi,
-  backendClientFactory = createBackendClient,
+  loadBackendManifestsFn = loadBackendManifests,
+  probeContainerFileFn = probeContainerFile,
+  summarizeBackendsFn = summarizeBackends,
+  providerFactory = createBackendClientProvider,
 } = {}) {
-  const dllPath = resolveDllPath(env.UPI_BACKEND_DLL);
-  state.backendClient = backendClientFactory({ dllPath, koffi: koffiModule });
-  return state.backendClient;
+  const manifests = loadBackendManifestsFn();
+  state.backendRegistrySummary = summarizeBackendsFn(manifests);
+  state.backendClientProvider = providerFactory({
+    manifests,
+    koffi: koffiModule,
+    probeContainerFile: probeContainerFileFn,
+    selectionStore: state.backendSelections,
+  });
+  return state.backendClientProvider;
 }
 
 function showStartupErrorAndQuit({ app: appModule, dialog: dialogModule, error }) {
@@ -203,14 +270,14 @@ function startDesktopApp({
   dialog: dialogModule = dialog,
   ipcMain: ipcMainModule = ipcMain,
   state = desktopState,
-  initializeBackendClient: initializeBackendClientFn = initializeBackendClient,
+  initializeBackendRouting: initializeBackendRoutingFn = initializeBackendRouting,
   createWindow: createWindowFn = createWindow,
 } = {}) {
   const handlers = createIpcHandlers({ state, dialog: dialogModule });
   registerIpcHandlers(ipcMainModule, handlers);
 
   const startup = appModule.whenReady().then(async () => {
-    initializeBackendClientFn({ state });
+    initializeBackendRoutingFn({ state });
     await createWindowFn({ BrowserWindowClass });
 
     appModule.on('activate', () => {
@@ -238,13 +305,12 @@ if (app && BrowserWindow && dialog && ipcMain) {
 }
 
 module.exports = {
-  BACKEND_NOT_READY_RESPONSE,
   PACKAGE_NOT_OPEN_RESPONSE,
   createDesktopState,
   createIpcHandlers,
   registerIpcHandlers,
   createWindow,
-  initializeBackendClient,
+  initializeBackendRouting,
   showStartupErrorAndQuit,
   startDesktopApp,
 };

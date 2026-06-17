@@ -20,4 +20,8 @@ contextBridge.exposeInMainWorld('upi', {
   clearAesKey() {
     return ipcRenderer.invoke('analysis:clearAesKey');
   },
+
+  chooseBackend(request) {
+    return ipcRenderer.invoke('backend:choose', request);
+  },
 });

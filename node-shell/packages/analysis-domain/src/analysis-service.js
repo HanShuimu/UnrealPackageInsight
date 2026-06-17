@@ -57,14 +57,23 @@ function hasAesRequiredIssue(response) {
 class AnalysisService {
   constructor({
     backendClient,
+    backendClientProvider = null,
     filePaths,
     aesSession = new AesKeySession(),
     cache = new AnalysisCache(),
   }) {
     this.backendClient = backendClient;
+    this.backendClientProvider = backendClientProvider;
     this.filePaths = filePaths || [];
     this.aesSession = aesSession;
     this.cache = cache;
+  }
+
+  async resolveBackend(filePath) {
+    if (this.backendClientProvider) {
+      return this.backendClientProvider.resolveForFile(filePath, this.filePaths);
+    }
+    return { backendId: 'legacy', client: this.backendClient };
   }
 
   async analyze(filePath) {
@@ -87,18 +96,20 @@ class AnalysisService {
       return cloneErrorResponse(FILE_UNAVAILABLE_RESPONSE);
     }
 
+    const { backendId, client } = await this.resolveBackend(pakPath);
     const cacheKey = this.cache.makeKey({
       analysisType: 'pak',
       paths: [pakPath],
       fileStamp: stamp,
       aesKey,
+      backendId,
     });
     const cached = this.cache.get(cacheKey);
     if (cached !== undefined) {
       return cached;
     }
 
-    const result = await this.backendClient.analyzePak({ pakPath, aesKey });
+    const result = await client.analyzePak({ pakPath, aesKey });
     this.cache.set(cacheKey, result);
     return result;
   }
@@ -122,18 +133,20 @@ class AnalysisService {
       return cloneErrorResponse(FILE_UNAVAILABLE_RESPONSE);
     }
 
+    const { backendId, client } = await this.resolveBackend(utocPath);
     const cacheKey = this.cache.makeKey({
       analysisType: 'iostore',
       paths: cachePaths,
       fileStamp: stamps.join('|'),
       aesKey,
+      backendId,
     });
     const cached = this.cache.get(cacheKey);
     if (cached !== undefined) {
       return cached;
     }
 
-    const result = await this.backendClient.analyzeIoStore({ utocPath, ucasPath, aesKey });
+    const result = await client.analyzeIoStore({ utocPath, ucasPath, aesKey });
     this.cache.set(cacheKey, result);
     return result;
   }

@@ -37,3 +37,12 @@ test('renderer script uses the preload API and safe DOM text APIs', () => {
   assert.match(script, /textContent/);
   assert.doesNotMatch(script, /\.innerHTML\s*=/);
 });
+
+test('renderer includes backend chooser dialog', () => {
+  const html = readRendererFile('index.html');
+  const script = readRendererFile('renderer.js');
+
+  assert.match(html, /id="backend-dialog"/);
+  assert.match(html, /id="backend-options"/);
+  assert.match(script, /chooseBackend/);
+});

@@ -1,11 +1,7 @@
-function main() {
-  console.log('UnrealPackageInsight CLI commands are unavailable in this phase. Use npm run gui to start the desktop app.');
-}
+const { main } = require('../src/index.js');
 
 if (require.main === module) {
   main();
 }
 
-module.exports = {
-  main,
-};
+module.exports = { main };

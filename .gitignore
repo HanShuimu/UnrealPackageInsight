@@ -76,6 +76,7 @@ DerivedDataCache/*
 
 # Node shell dependencies
 node-shell/node_modules/
+node-shell/native/
 
 # Local brainstorming companion state
 .superpowers/
