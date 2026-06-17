@@ -1,5 +1,5 @@
 import { Descriptions, Empty, Tabs, Typography } from 'antd';
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState, type RefCallback } from 'react';
 import type { AnalysisResult, Issue } from '../types/upi';
 import { buildAnalysisTabs, type AnalysisTabModel } from '../utils/analysisTabs';
 import { formatLabel, formatValue } from '../utils/format';
@@ -24,6 +24,59 @@ const SUMMARY_EXCLUDED_KEYS = new Set([
   'partitions',
   'backendSelection',
 ]);
+const TABLE_VERTICAL_CHROME_PX = 48;
+
+function normalizeMeasuredHeight(height: number): number {
+  return Math.max(0, Math.floor(height));
+}
+
+function readElementHeight(element: HTMLElement): number {
+  return element.getBoundingClientRect().height || element.clientHeight || 0;
+}
+
+function useMeasuredHeight<T extends HTMLElement>(): [RefCallback<T>, number] {
+  const [element, setElement] = useState<T | null>(null);
+  const [height, setHeight] = useState(0);
+
+  const ref = useCallback((nextElement: T | null) => {
+    setElement(nextElement);
+  }, []);
+
+  useEffect(() => {
+    if (!element) {
+      setHeight(0);
+      return undefined;
+    }
+
+    const updateHeight = (nextHeight: number) => {
+      const measuredHeight = normalizeMeasuredHeight(nextHeight);
+      setHeight((currentHeight) => (
+        currentHeight === measuredHeight ? currentHeight : measuredHeight
+      ));
+    };
+
+    updateHeight(readElementHeight(element));
+
+    if (typeof ResizeObserver === 'undefined') {
+      return undefined;
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      updateHeight(entry?.contentRect.height ?? readElementHeight(element));
+    });
+
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, [element]);
+
+  return [ref, height];
+}
+
+function tableBodyHeight(availableHeight: number): number {
+  return Math.max(0, normalizeMeasuredHeight(availableHeight) - TABLE_VERTICAL_CHROME_PX);
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -51,14 +104,25 @@ function buildSummaryItems(result: AnalysisResult): SummaryItem[] {
   }));
 }
 
-function IssuesTable({ height, issues }: { height: number; issues: Issue[] }) {
+function TablePane({ fallbackHeight, rows }: { fallbackHeight: number; rows: unknown[] }) {
+  const [paneRef, measuredHeight] = useMeasuredHeight<HTMLDivElement>();
+  const availableHeight = measuredHeight || fallbackHeight;
+
+  return (
+    <div className="analysis-table-pane" ref={paneRef}>
+      <AnalysisTable rows={rows} height={tableBodyHeight(availableHeight)} />
+    </div>
+  );
+}
+
+function IssuesTable({ fallbackHeight, issues }: { fallbackHeight: number; issues: Issue[] }) {
   const rows = issues.map((issue) => ({
     severity: issue.severity ?? '',
     code: issue.code ?? '',
     message: issue.message ?? '',
   }));
 
-  return <AnalysisTable rows={rows} height={height} />;
+  return <TablePane rows={rows} fallbackHeight={fallbackHeight} />;
 }
 
 function renderOverview(result: AnalysisResult) {
@@ -76,9 +140,9 @@ function renderTabContent(tab: AnalysisTabModel, result: AnalysisResult, height:
     case 'overview':
       return renderOverview(result);
     case 'table':
-      return <AnalysisTable rows={result[tab.field] ?? []} height={height} />;
+      return <TablePane rows={result[tab.field] ?? []} fallbackHeight={height} />;
     case 'issues':
-      return <IssuesTable issues={result.issues ?? []} height={height} />;
+      return <IssuesTable issues={result.issues ?? []} fallbackHeight={height} />;
     case 'raw':
       return (
         <Typography.Paragraph code>
