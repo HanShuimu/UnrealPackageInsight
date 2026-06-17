@@ -1,10 +1,16 @@
 const path = require('node:path');
 
-const DEFAULT_ENGINE_ROOT = 'C:\\WORKSPACE_UE\\UnrealEngine';
 const WINDOWS_PATH_DELIMITER = ';';
 
 function usageError() {
-  return new Error('Usage: node src/index.js <path-to-backend-dll>');
+  return new Error('Backend DLL path is required.');
+}
+
+function requireNonBlank(value, name) {
+  if (!value || typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`${name} is required.`);
+  }
+  return value;
 }
 
 function resolveDllPath(dllPath, cwd = process.cwd()) {
@@ -17,12 +23,12 @@ function resolveDllPath(dllPath, cwd = process.cwd()) {
     : path.win32.resolve(cwd, dllPath);
 }
 
-function getEngineWin64BinariesDir(engineRoot = DEFAULT_ENGINE_ROOT) {
-  return path.win32.join(engineRoot, 'Engine', 'Binaries', 'Win64');
+function getEngineWin64BinariesDir(engineRoot) {
+  return path.win32.join(requireNonBlank(engineRoot, 'engineRoot'), 'Engine', 'Binaries', 'Win64');
 }
 
-function buildDllSearchPath({ dllPath, engineRoot = DEFAULT_ENGINE_ROOT, existingPath = process.env.PATH || '' }) {
-  const dllDirectory = path.win32.dirname(dllPath);
+function buildDllSearchPath({ dllPath, engineRoot, existingPath = process.env.PATH || '' }) {
+  const dllDirectory = path.win32.dirname(requireNonBlank(dllPath, 'dllPath'));
   const engineBinaries = getEngineWin64BinariesDir(engineRoot);
   const additions = [dllDirectory, engineBinaries];
   const existingParts = existingPath.length > 0 ? existingPath.split(WINDOWS_PATH_DELIMITER) : [];
@@ -42,7 +48,6 @@ function buildDllSearchPath({ dllPath, engineRoot = DEFAULT_ENGINE_ROOT, existin
 }
 
 module.exports = {
-  DEFAULT_ENGINE_ROOT,
   WINDOWS_PATH_DELIMITER,
   resolveDllPath,
   getEngineWin64BinariesDir,
