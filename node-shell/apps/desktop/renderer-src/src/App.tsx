@@ -62,11 +62,37 @@ function backendLabel(backendInfo: BackendInfo | null): string {
     return 'Not loaded';
   }
 
-  const name = backendInfo.backendName || 'Unknown backend';
-  const version = backendInfo.backendVersion ? ` ${backendInfo.backendVersion}` : '';
-  const unrealVersion = backendInfo.unrealVersion ? ` / UE ${backendInfo.unrealVersion}` : '';
+  const details = [
+    backendInfo.backendName,
+    backendInfo.backendVersion ? `v${backendInfo.backendVersion}` : '',
+    backendInfo.unrealVersion ? `UE ${backendInfo.unrealVersion}` : '',
+    backendInfo.protocolVersion ? `protocol ${backendInfo.protocolVersion}` : '',
+  ].filter(Boolean);
 
-  return `${name}${version}${unrealVersion}`;
+  if (details.length > 0) {
+    return details.join(' | ');
+  }
+
+  if (Array.isArray(backendInfo.backends) && backendInfo.backends.length === 1) {
+    const backend = backendInfo.backends[0];
+    return backend.id ? `${backend.label} (${backend.id})` : backend.label;
+  }
+
+  if (typeof backendInfo.backendCount === 'number') {
+    if (backendInfo.backendCount === 0) {
+      return 'No backends available';
+    }
+
+    return backendInfo.backendCount === 1
+      ? '1 backend available'
+      : `${backendInfo.backendCount} backends available`;
+  }
+
+  if (Array.isArray(backendInfo.issues) && backendInfo.issues.length > 0) {
+    return 'Issue reported';
+  }
+
+  return 'Ready';
 }
 
 export default function App() {

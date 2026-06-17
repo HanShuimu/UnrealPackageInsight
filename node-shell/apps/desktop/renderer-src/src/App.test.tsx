@@ -138,6 +138,23 @@ describe('App', () => {
     expect(screen.getByText('None')).toBeInTheDocument();
   });
 
+  test('summarizes backend registry info in the shell header', () => {
+    mockHarness.state = createMockState({
+      backendInfo: {
+        status: 'OK',
+        backendCount: 2,
+        backends: [
+          { id: 'ue-5.7-development', label: 'UE 5.7 Development' },
+          { id: 'ue-5.7-shipping', label: 'UE 5.7 Shipping' },
+        ],
+      },
+    });
+
+    render(<App />);
+
+    expect(screen.getByLabelText('Backend: 2 backends available')).toHaveClass('status-value');
+  });
+
   test('loads backend info on mount and opens directories from the toolbar', async () => {
     render(<App />);
 
