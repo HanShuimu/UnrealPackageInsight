@@ -18,6 +18,7 @@ const {
   removeDirectory,
   repoRootFromScript,
   resolveConfigurations,
+  runBatchFile,
 } = require('../../scripts/build-native-backend.js');
 
 test('parseArgs accepts engine root and optional configuration', () => {
@@ -216,13 +217,47 @@ test('defaultRunBuild invokes Build.bat through cmd.exe and returns the built DL
     '/d',
     '/s',
     '/c',
+    'call',
     `"${buildBat}"`,
     'UnrealPackageInsightBackend',
     'Win64',
     'Development',
     '-WaitMutex',
   ]);
-  assert.deepEqual(execCalls[0].options, { stdio: 'inherit' });
+  assert.deepEqual(execCalls[0].options, { stdio: 'inherit', windowsVerbatimArguments: true });
+});
+
+test('runBatchFile executes a batch file from a path with spaces and preserves arguments', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi batch spaced '));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const batchDir = path.join(root, 'Program Files', 'Epic Games');
+  const batchPath = path.join(batchDir, 'Build.bat');
+  const outputPath = path.join(root, 'received args.txt');
+  fs.mkdirSync(batchDir, { recursive: true });
+  fs.writeFileSync(batchPath, [
+    '@echo off',
+    '> "%~1" (',
+    '  echo %~2',
+    '  echo %~3',
+    '  echo %~4',
+    '  echo %~5',
+    ')',
+  ].join('\r\n'));
+
+  runBatchFile(batchPath, [
+    outputPath,
+    'UnrealPackageInsightBackend',
+    'Win64',
+    'Development',
+    'Arg With Spaces',
+  ]);
+
+  assert.deepEqual(fs.readFileSync(outputPath, 'utf8').trim().split(/\r?\n/), [
+    'UnrealPackageInsightBackend',
+    'Win64',
+    'Development',
+    'Arg With Spaces',
+  ]);
 });
 
 test('buildNativeBackends preserves existing staged source when Build.bat is not a file', (t) => {

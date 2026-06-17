@@ -142,14 +142,23 @@ function findBuiltDll(engineRoot) {
   return dlls[0].filePath;
 }
 
+function quoteBatchArgument(argument) {
+  const value = String(argument);
+  if (value.length === 0 || /[\s"&|<>^]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
 function runBatchFile(command, args, execFile = execFileSync) {
   execFile('cmd.exe', [
     '/d',
     '/s',
     '/c',
+    'call',
     `"${command}"`,
-    ...args,
-  ], { stdio: 'inherit' });
+    ...args.map(quoteBatchArgument),
+  ], { stdio: 'inherit', windowsVerbatimArguments: true });
 }
 
 function defaultRunBuild({ engineRoot, configuration, execFile = execFileSync }) {
