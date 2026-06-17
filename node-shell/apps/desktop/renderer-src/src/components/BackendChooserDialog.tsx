@@ -1,4 +1,4 @@
-import { Modal, Radio } from 'antd';
+import { Empty, Modal, Radio } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { BackendSelectionRequest } from '../types/upi';
 
@@ -18,28 +18,38 @@ export function BackendChooserDialog({ request, onSubmit, onCancel }: BackendCho
 
   const options = useMemo(() => (
     candidates.map((candidate) => ({
-      label: candidate.label,
+      label: `${candidate.label} (${candidate.id})`,
       value: candidate.id,
     }))
   ), [candidates]);
 
   const handleSubmit = useCallback(() => {
+    if (!selectedId) {
+      return;
+    }
+
     onSubmit(selectedId);
   }, [onSubmit, selectedId]);
 
   return (
     <Modal
+      okButtonProps={{ disabled: !selectedId }}
       okText="Use backend"
       open={Boolean(request)}
       title="Choose backend"
       onCancel={onCancel}
       onOk={handleSubmit}
     >
-      <Radio.Group
-        options={options}
-        value={selectedId}
-        onChange={(event) => setSelectedId(String(event.target.value))}
-      />
+      <p>{request?.containerLabel || 'Container'} requires a backend.</p>
+      {candidates.length > 0 ? (
+        <Radio.Group
+          options={options}
+          value={selectedId}
+          onChange={(event) => setSelectedId(String(event.target.value))}
+        />
+      ) : (
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No backend candidates available." />
+      )}
     </Modal>
   );
 }

@@ -19,13 +19,18 @@ export function AesKeyDialog({ open, message, loading, onSubmit, onCancel }: Aes
   }, [open]);
 
   const handleSubmit = useCallback(() => {
+    if (loading) {
+      return;
+    }
+
     onSubmit(aesKey);
-  }, [aesKey, onSubmit]);
+  }, [aesKey, loading, onSubmit]);
 
   return (
     <Modal
       confirmLoading={loading}
-      okText="Submit"
+      okButtonProps={{ disabled: loading }}
+      okText="Analyze"
       open={open}
       title="AES key required"
       onCancel={onCancel}
@@ -36,6 +41,9 @@ export function AesKeyDialog({ open, message, loading, onSubmit, onCancel }: Aes
         <Form.Item label="AES key">
           <Input.Password
             autoFocus
+            autoComplete="off"
+            disabled={loading}
+            spellCheck={false}
             value={aesKey}
             onChange={(event) => setAesKey(event.target.value)}
             onPressEnter={handleSubmit}

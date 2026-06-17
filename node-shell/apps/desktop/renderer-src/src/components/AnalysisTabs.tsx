@@ -7,7 +7,7 @@ import { AnalysisTable } from './AnalysisTable';
 
 type AnalysisTabsProps = {
   result: AnalysisResult | null;
-  height: number;
+  tableHeight: number;
 };
 
 type SummaryItem = {
@@ -90,7 +90,7 @@ function renderTabContent(tab: AnalysisTabModel, result: AnalysisResult, height:
   }
 }
 
-export function AnalysisTabs({ result, height }: AnalysisTabsProps) {
+export function AnalysisTabs({ result, tableHeight }: AnalysisTabsProps) {
   const tabModels = useMemo(() => buildAnalysisTabs(result), [result]);
 
   if (!result || tabModels.length === 0) {
@@ -102,7 +102,7 @@ export function AnalysisTabs({ result, height }: AnalysisTabsProps) {
       items={tabModels.map((tab) => ({
         key: tab.id,
         label: tab.label,
-        children: renderTabContent(tab, result, height),
+        children: renderTabContent(tab, result, tableHeight),
       }))}
     />
   );
