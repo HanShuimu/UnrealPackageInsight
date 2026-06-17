@@ -3,6 +3,8 @@
 const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
+const { runBackendSmoke } = require('../node-shell/src/backend-runner');
+const { buildDllSearchPath } = require('../node-shell/src/dll-paths');
 
 const ALL_CONFIGURATIONS = ['Debug', 'Development', 'Shipping'];
 const DEFAULT_UNREAL_PLATFORM = 'Win64';
@@ -151,11 +153,33 @@ function defaultRunBuild({ engineRoot, configuration }) {
   return findBuiltDll(engineRoot);
 }
 
-function defaultSmokeCheck({ dllPath }) {
+function defaultSmokeCheck({
+  dllPath,
+  engineRoot,
+  koffiModule = require(path.join(repoRootFromScript(), 'node-shell', 'node_modules', 'koffi')),
+  smokeRunner = runBackendSmoke,
+  env = process.env,
+  log = console.log,
+}) {
   if (!fs.existsSync(dllPath)) {
     throw new Error(`Staged DLL missing: ${dllPath}`);
   }
-  return { ok: true };
+  const hadPath = Object.prototype.hasOwnProperty.call(env, 'PATH');
+  const originalPath = env.PATH;
+  env.PATH = buildDllSearchPath({
+    dllPath,
+    engineRoot,
+    existingPath: originalPath || '',
+  });
+  try {
+    return smokeRunner({ dllPath, koffi: koffiModule, log });
+  } finally {
+    if (hadPath) {
+      env.PATH = originalPath;
+    } else {
+      delete env.PATH;
+    }
+  }
 }
 
 function buildNativeBackends({
@@ -178,10 +202,11 @@ function buildNativeBackends({
   }
   const engineVersion = readEngineVersion(engineRoot);
   fs.accessSync(buildBat, fs.constants.R_OK);
+  const buildConfigurations = resolveConfigurations({ configuration });
   copyDirectory(sourceDir, destinationDir);
 
   const results = [];
-  for (const buildConfiguration of resolveConfigurations({ configuration })) {
+  for (const buildConfiguration of buildConfigurations) {
     const builtDll = runBuild({ engineRoot, configuration: buildConfiguration });
     const nativeDir = getNativeBackendDir({
       repoRoot,
@@ -201,7 +226,7 @@ function buildNativeBackends({
       configuration: buildConfiguration,
     });
     fs.writeFileSync(path.join(nativeDir, 'backend.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-    smokeCheck({ dllPath: stagedDll, manifest });
+    smokeCheck({ dllPath: stagedDll, engineRoot, manifest });
     results.push({ manifest, nativeDir, dllPath: stagedDll });
   }
   return results;

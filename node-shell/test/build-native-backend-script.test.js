@@ -8,6 +8,7 @@ const {
   ALL_CONFIGURATIONS,
   buildNativeBackends,
   createBackendManifest,
+  defaultSmokeCheck,
   ensureDirectory,
   findBuiltDll,
   getNativeBackendDir,
@@ -124,6 +125,70 @@ test('buildNativeBackends preserves existing staged source when input validation
   assert.equal(fs.existsSync(markerPath), true);
 });
 
+test('buildNativeBackends preserves existing staged source when configuration is invalid', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-build-config-guard-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const repoRoot = path.join(root, 'repo');
+  const engineRoot = path.join(root, 'engine');
+  const sourceDir = path.join(repoRoot, 'ue-backend', 'UnrealPackageInsightBackend');
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.writeFileSync(path.join(sourceDir, 'UnrealPackageInsightBackend.Target.cs'), 'target');
+  const destinationDir = path.join(engineRoot, 'Engine', 'Source', 'Programs', 'UnrealPackageInsightBackend');
+  const markerPath = path.join(destinationDir, 'keep.marker');
+  fs.mkdirSync(destinationDir, { recursive: true });
+  fs.writeFileSync(markerPath, 'existing');
+  const versionPath = path.join(engineRoot, 'Engine', 'Build', 'Build.version');
+  fs.mkdirSync(path.dirname(versionPath), { recursive: true });
+  fs.writeFileSync(versionPath, JSON.stringify({ MajorVersion: 5, MinorVersion: 7, PatchVersion: 4 }));
+  const buildBat = path.join(engineRoot, 'Engine', 'Build', 'BatchFiles', 'Build.bat');
+  fs.mkdirSync(path.dirname(buildBat), { recursive: true });
+  fs.writeFileSync(buildBat, '');
+
+  assert.throws(() => buildNativeBackends({ repoRoot, engineRoot, configuration: 'Nope' }), /Unsupported configuration: Nope/);
+  assert.equal(fs.existsSync(markerPath), true);
+});
+
+test('defaultSmokeCheck loads the backend with a temporary build-time DLL search path', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-smoke-check-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const engineRoot = path.join(root, 'engine');
+  const dllPath = path.join(root, 'native', 'UnrealPackageInsightBackend.dll');
+  fs.mkdirSync(path.dirname(dllPath), { recursive: true });
+  fs.writeFileSync(dllPath, '');
+  const env = { PATH: 'C:\\Existing\\Bin' };
+  const koffiModule = { fake: 'koffi' };
+  const calls = [];
+  const pathsDuringSmoke = [];
+  const logs = [];
+
+  const result = defaultSmokeCheck({
+    dllPath,
+    engineRoot,
+    koffiModule,
+    env,
+    log(message) {
+      logs.push(message);
+    },
+    smokeRunner(args) {
+      calls.push(args);
+      pathsDuringSmoke.push(env.PATH);
+      args.log('smoked');
+      return { ok: true };
+    },
+  });
+
+  assert.deepEqual(result, { ok: true });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].dllPath, dllPath);
+  assert.equal(calls[0].koffi, koffiModule);
+  assert.deepEqual(logs, ['smoked']);
+  assert.equal(env.PATH, 'C:\\Existing\\Bin');
+  const smokePathParts = pathsDuringSmoke[0].split(';');
+  assert.equal(smokePathParts[0], path.win32.dirname(dllPath));
+  assert.equal(smokePathParts[1], path.win32.join(engineRoot, 'Engine', 'Binaries', 'Win64'));
+  assert.equal(smokePathParts[2], 'C:\\Existing\\Bin');
+});
+
 test('buildNativeBackends stages and builds all configurations by default', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-build-flow-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -153,8 +218,8 @@ test('buildNativeBackends stages and builds all configurations by default', (t) 
       fs.writeFileSync(dllPath, configuration);
       return dllPath;
     },
-    smokeCheck({ dllPath, manifest }) {
-      smokeCalls.push({ dllPath, manifest });
+    smokeCheck({ dllPath, manifest, engineRoot: smokeEngineRoot }) {
+      smokeCalls.push({ dllPath, manifest, engineRoot: smokeEngineRoot });
       return { ok: true };
     },
   });
@@ -168,6 +233,7 @@ test('buildNativeBackends stages and builds all configurations by default', (t) 
   assert.deepEqual(smokeCalls.map((entry) => entry.manifest.configuration), ['Debug', 'Development', 'Shipping']);
   assert.deepEqual(smokeCalls.map((entry) => entry.dllPath), result.map((entry) => entry.dllPath));
   assert.deepEqual(smokeCalls.map((entry) => entry.manifest.id), result.map((entry) => entry.manifest.id));
+  assert.deepEqual(smokeCalls.map((entry) => entry.engineRoot), [engineRoot, engineRoot, engineRoot]);
   assert.equal(fs.existsSync(path.join(
     engineRoot,
     'Engine',
