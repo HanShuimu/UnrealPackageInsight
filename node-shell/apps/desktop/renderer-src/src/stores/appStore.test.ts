@@ -1,6 +1,49 @@
 import { describe, expect, test } from 'vitest';
 import { createAppStore } from './appStore';
-import type { AnalysisResult, UpiClient } from '../types/upi';
+import type { AnalysisResult, BackendSelectionRequest, PackageScan, UpiClient } from '../types/upi';
+
+type Deferred<T> = {
+  promise: Promise<T>;
+  resolve(value: T): void;
+  reject(error: unknown): void;
+};
+
+function createDeferred<T>(): Deferred<T> {
+  let resolve: (value: T) => void = () => {};
+  let reject: (error: unknown) => void = () => {};
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+
+  return { promise, resolve, reject };
+}
+
+function createScan(root: string, names: string[]): PackageScan {
+  return {
+    root,
+    files: names.map((name) => ({ path: `${root}\\${name}`, name })),
+    tree: {
+      name: root.split('\\').pop() || root,
+      path: root,
+      kind: 'directory',
+      children: names.map((name) => ({ name, path: `${root}\\${name}`, kind: 'pak' })),
+    },
+  };
+}
+
+function createBackendSelection(filePath: string): BackendSelectionRequest {
+  return {
+    filePath,
+    containerLabel: 'A.pak',
+    candidates: [{ id: 'test-backend', label: 'Test Backend' }],
+  };
+}
+
+async function flushPromises(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
 
 function createClient(overrides: Partial<UpiClient> = {}): UpiClient {
   return {
@@ -59,5 +102,175 @@ describe('appStore', () => {
 
     expect(store.getState().selectedFilePath).toBe('C:\\Paks\\B.pak');
     expect(store.getState().analysisResult?.overview).toEqual({ selected: 'B' });
+  });
+
+  test('openDirectory during in-flight analyze clears loading and ignores stale analysis result', async () => {
+    const analysis = createDeferred<AnalysisResult>();
+    const store = createAppStore(
+      createClient({
+        analyze: () => analysis.promise,
+        openPackageDirectory: async () => createScan('C:\\NewPaks', ['B.pak']),
+      }),
+    );
+
+    const analyzeRun = store.getState().analyzeFile('C:\\Paks\\A.pak');
+
+    expect(store.getState().isAnalyzing).toBe(true);
+
+    await store.getState().openDirectory();
+    analysis.resolve({ status: 'OK', overview: { selected: 'A' }, packages: [], compressedBlocks: [] });
+    await analyzeRun;
+
+    expect(store.getState().isAnalyzing).toBe(false);
+    expect(store.getState().selectedFilePath).toBe('');
+    expect(store.getState().scan?.root).toBe('C:\\NewPaks');
+    expect(store.getState().analysisResult).toBeNull();
+  });
+
+  test('overlapping openDirectory only applies the latest result', async () => {
+    const firstOpen = createDeferred<PackageScan | null>();
+    const secondOpen = createDeferred<PackageScan | null>();
+    let openCount = 0;
+    const store = createAppStore(
+      createClient({
+        openPackageDirectory: () => {
+          openCount += 1;
+          return openCount === 1 ? firstOpen.promise : secondOpen.promise;
+        },
+      }),
+    );
+
+    const firstRun = store.getState().openDirectory();
+    const secondRun = store.getState().openDirectory();
+
+    secondOpen.resolve(createScan('C:\\Second', ['B.pak', 'C.pak']));
+    await secondRun;
+    firstOpen.resolve(createScan('C:\\First', ['A.pak']));
+    await firstRun;
+
+    expect(store.getState().scan?.root).toBe('C:\\Second');
+    expect(store.getState().scan?.files).toHaveLength(2);
+    expect(store.getState().statusText).toBe('2 files found');
+    expect(store.getState().isOpeningDirectory).toBe(false);
+  });
+
+  test('invalid AES retry keeps the AES dialog open with the backend issue message', async () => {
+    const store = createAppStore(
+      createClient({
+        analyze: async () => ({
+          status: 'Error',
+          issues: [{ severity: 'error', code: 'pak.aes_key_required', message: 'AES key required.' }],
+          packages: [],
+          compressedBlocks: [],
+        }),
+        submitAesKeyAndRetry: async () => ({
+          status: 'Error',
+          issues: [{ severity: 'error', code: 'aes.invalid_key', message: 'The AES key is invalid.' }],
+          packages: [],
+          compressedBlocks: [],
+        }),
+      }),
+    );
+
+    await store.getState().analyzeFile('C:\\Paks\\A.pak');
+    await store.getState().submitAesKey('bad-key');
+
+    expect(store.getState().dialog.aesFilePath).toBe('C:\\Paks\\A.pak');
+    expect(store.getState().dialog.aesMessage).toBe('The AES key is invalid.');
+    expect(store.getState().statusText).toBe('AES key invalid');
+    expect(store.getState().analysisResult?.issues?.[0]?.code).toBe('aes.invalid_key');
+  });
+
+  test('stale AES retry result does not overwrite after another file is selected', async () => {
+    const retry = createDeferred<AnalysisResult>();
+    const store = createAppStore(
+      createClient({
+        analyze: async (filePath) => (
+          filePath.endsWith('A.pak')
+            ? {
+                status: 'Error',
+                issues: [{ severity: 'error', code: 'pak.aes_key_required', message: 'AES key required.' }],
+                packages: [],
+                compressedBlocks: [],
+              }
+            : { status: 'OK', overview: { selected: 'B' }, packages: [], compressedBlocks: [] }
+        ),
+        submitAesKeyAndRetry: () => retry.promise,
+      }),
+    );
+
+    await store.getState().analyzeFile('C:\\Paks\\A.pak');
+    const retryRun = store.getState().submitAesKey('good-key');
+    await store.getState().analyzeFile('C:\\Paks\\B.pak');
+    retry.resolve({ status: 'OK', overview: { selected: 'A' }, packages: [], compressedBlocks: [] });
+    await retryRun;
+
+    expect(store.getState().selectedFilePath).toBe('C:\\Paks\\B.pak');
+    expect(store.getState().analysisResult?.overview).toEqual({ selected: 'B' });
+    expect(store.getState().dialog.aesFilePath).toBe('');
+  });
+
+  test('stale backend selection for the same file does not reanalyze over newer state', async () => {
+    const backendChoice = createDeferred<string>();
+    let analyzeCount = 0;
+    const store = createAppStore(
+      createClient({
+        analyze: async (filePath) => {
+          analyzeCount += 1;
+          if (analyzeCount === 1) {
+            return {
+              status: 'Error',
+              issues: [{ severity: 'error', code: 'backend.multiple_candidates', message: 'Choose backend.' }],
+              backendSelection: createBackendSelection(filePath),
+            };
+          }
+          if (analyzeCount === 2) {
+            return { status: 'OK', overview: { selected: 'newer' }, packages: [], compressedBlocks: [] };
+          }
+          return { status: 'OK', overview: { selected: 'stale-backend' }, packages: [], compressedBlocks: [] };
+        },
+        chooseBackend: () => backendChoice.promise,
+      }),
+    );
+
+    await store.getState().analyzeFile('C:\\Paks\\A.pak');
+    const chooseRun = store.getState().chooseBackend('test-backend');
+    await store.getState().analyzeFile('C:\\Paks\\A.pak');
+    backendChoice.resolve('test-backend');
+    await chooseRun;
+
+    expect(analyzeCount).toBe(2);
+    expect(store.getState().analysisResult?.overview).toEqual({ selected: 'newer' });
+    expect(store.getState().dialog.backendSelection).toBeNull();
+  });
+
+  test('stale backend cancel error does not overwrite newer same-file analysis', async () => {
+    const backendCancel = createDeferred<string>();
+    let analyzeCount = 0;
+    const store = createAppStore(
+      createClient({
+        analyze: async (filePath) => {
+          analyzeCount += 1;
+          if (analyzeCount === 1) {
+            return {
+              status: 'Error',
+              issues: [{ severity: 'error', code: 'backend.multiple_candidates', message: 'Choose backend.' }],
+              backendSelection: createBackendSelection(filePath),
+            };
+          }
+          return { status: 'OK', overview: { selected: 'newer' }, packages: [], compressedBlocks: [] };
+        },
+        chooseBackend: () => backendCancel.promise,
+      }),
+    );
+
+    await store.getState().analyzeFile('C:\\Paks\\A.pak');
+    store.getState().cancelBackendDialog();
+    await store.getState().analyzeFile('C:\\Paks\\A.pak');
+    backendCancel.reject(new Error('Cancel failed'));
+    await flushPromises();
+
+    expect(store.getState().analysisResult?.overview).toEqual({ selected: 'newer' });
+    expect(store.getState().statusText).toBe('Analysis ready');
   });
 });

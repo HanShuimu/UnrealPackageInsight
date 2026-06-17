@@ -14,6 +14,7 @@ export type DialogState = {
   aesFilePath: string;
   aesMessage: string;
   backendSelection: BackendSelectionRequest | null;
+  backendSelectionRequestId: number;
 };
 
 export type AppState = {
@@ -25,6 +26,7 @@ export type AppState = {
   isOpeningDirectory: boolean;
   isAnalyzing: boolean;
   analysisRequestId: number;
+  openDirectoryRequestId: number;
   dialog: DialogState;
   loadBackendInfo(): Promise<void>;
   openDirectory(): Promise<void>;
@@ -40,6 +42,7 @@ function createDialogState(overrides: Partial<DialogState> = {}): DialogState {
     aesFilePath: '',
     aesMessage: DEFAULT_AES_MESSAGE,
     backendSelection: null,
+    backendSelectionRequestId: 0,
     ...overrides,
   };
 }
@@ -102,6 +105,25 @@ function isCurrentAnalysis(state: AppState, filePath: string, requestId: number)
   return state.selectedFilePath === filePath && state.analysisRequestId === requestId;
 }
 
+function isCurrentOpenDirectory(state: AppState, requestId: number): boolean {
+  return state.openDirectoryRequestId === requestId;
+}
+
+function isCurrentBackendSelection(
+  state: AppState,
+  backendSelection: BackendSelectionRequest,
+  requestId: number,
+): boolean {
+  return state.dialog.backendSelection === backendSelection
+    && state.dialog.backendSelectionRequestId === requestId
+    && state.analysisRequestId === requestId
+    && (!backendSelection.filePath || state.selectedFilePath === backendSelection.filePath);
+}
+
+function isSameAnalysisContext(state: AppState, filePath: string | undefined, requestId: number): boolean {
+  return state.analysisRequestId === requestId && (!filePath || state.selectedFilePath === filePath);
+}
+
 function getAesStatusText(result: AnalysisResult): string {
   return needsAesKey(result) ? 'AES key required' : 'AES key invalid';
 }
@@ -120,6 +142,7 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
     isOpeningDirectory: false,
     isAnalyzing: false,
     analysisRequestId: 0,
+    openDirectoryRequestId: 0,
     dialog: createDialogState(),
 
     async loadBackendInfo() {
@@ -138,9 +161,14 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
     },
 
     async openDirectory() {
-      set({ isOpeningDirectory: true, statusText: 'Opening...' });
+      const requestId = get().openDirectoryRequestId + 1;
+      set({ openDirectoryRequestId: requestId, isOpeningDirectory: true, statusText: 'Opening...' });
       try {
         const scan = await client.openPackageDirectory();
+        if (!isCurrentOpenDirectory(get(), requestId)) {
+          return;
+        }
+
         if (!scan) {
           set({ statusText: 'Open canceled' });
           return;
@@ -152,15 +180,22 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
           analysisResult: null,
           dialog: createDialogState(),
           analysisRequestId: state.analysisRequestId + 1,
+          isAnalyzing: false,
           statusText: formatScanStatus(scan),
         }));
       } catch (error) {
+        if (!isCurrentOpenDirectory(get(), requestId)) {
+          return;
+        }
+
         set({
           analysisResult: createErrorResult('renderer.open_failed', error),
           statusText: 'Open failed',
         });
       } finally {
-        set({ isOpeningDirectory: false });
+        if (isCurrentOpenDirectory(get(), requestId)) {
+          set({ isOpeningDirectory: false });
+        }
       }
     },
 
@@ -177,6 +212,7 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
           aesFilePath: '',
           aesMessage: DEFAULT_AES_MESSAGE,
           backendSelection: null,
+          backendSelectionRequestId: 0,
         },
       }));
 
@@ -187,9 +223,17 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
         }
 
         if (result.backendSelection) {
+          const backendSelection = {
+            ...result.backendSelection,
+            filePath: result.backendSelection.filePath || filePath,
+          };
           set({
             analysisResult: result,
-            dialog: { ...get().dialog, backendSelection: result.backendSelection },
+            dialog: {
+              ...get().dialog,
+              backendSelection,
+              backendSelectionRequestId: requestId,
+            },
             statusText: 'Choose backend',
           });
           return;
@@ -300,17 +344,28 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
 
     async chooseBackend(selectedId: string) {
       const backendSelection = get().dialog.backendSelection;
+      const requestId = get().dialog.backendSelectionRequestId;
       if (!backendSelection) {
+        return;
+      }
+
+      if (!isCurrentBackendSelection(get(), backendSelection, requestId)) {
         return;
       }
 
       try {
         const resolvedId = await client.chooseBackend({ ...backendSelection, selectedId });
-        if (backendSelection.filePath && get().selectedFilePath !== backendSelection.filePath) {
+        if (!isCurrentBackendSelection(get(), backendSelection, requestId)) {
           return;
         }
 
-        set((state) => ({ dialog: { ...state.dialog, backendSelection: null } }));
+        set((state) => ({
+          dialog: {
+            ...state.dialog,
+            backendSelection: null,
+            backendSelectionRequestId: 0,
+          },
+        }));
 
         if (!resolvedId) {
           set({ statusText: 'Backend selection canceled' });
@@ -321,7 +376,7 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
           await get().analyzeFile(backendSelection.filePath);
         }
       } catch (error) {
-        if (backendSelection.filePath && get().selectedFilePath !== backendSelection.filePath) {
+        if (!isCurrentBackendSelection(get(), backendSelection, requestId)) {
           return;
         }
 
@@ -335,19 +390,28 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
 
     cancelBackendDialog() {
       const backendSelection = get().dialog.backendSelection;
+      const requestId = get().dialog.backendSelectionRequestId;
+      if (!backendSelection || !isCurrentBackendSelection(get(), backendSelection, requestId)) {
+        return;
+      }
+
       set((state) => ({
-        dialog: { ...state.dialog, backendSelection: null },
+        dialog: {
+          ...state.dialog,
+          backendSelection: null,
+          backendSelectionRequestId: 0,
+        },
         statusText: 'Backend selection canceled',
       }));
 
-      if (backendSelection) {
-        void client.chooseBackend({ ...backendSelection, selectedId: '' }).catch((error) => {
+      void client.chooseBackend({ ...backendSelection, selectedId: '' }).catch((error) => {
+        if (isSameAnalysisContext(get(), backendSelection.filePath, requestId)) {
           set({
             analysisResult: createErrorResult('renderer.backend_cancel_failed', error),
             statusText: 'Backend selection cancel failed',
           });
-        });
-      }
+        }
+      });
     },
   }));
 }
