@@ -13,6 +13,7 @@ export default defineConfig({
     template: path.resolve(__dirname, 'renderer-src/index.html'),
   },
   output: {
+    assetPrefix: './',
     distPath: {
       root: path.resolve(__dirname, 'renderer-dist'),
     },
