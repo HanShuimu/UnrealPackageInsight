@@ -6,6 +6,8 @@ const test = require('node:test');
 
 const {
   ALL_CONFIGURATIONS,
+  REQUIRED_GENERATED_PROTOCOL_HEADERS,
+  assertProgramGeneratedProtocolHeaders,
   buildNativeBackends,
   createBackendManifest,
   defaultRunBuild,
@@ -13,6 +15,7 @@ const {
   ensureDirectory,
   findBuiltDll,
   getNativeBackendDir,
+  getProgramGeneratedProtocolDir,
   parseArgs,
   readEngineVersion,
   removeDirectory,
@@ -20,6 +23,21 @@ const {
   resolveConfigurations,
   runBatchFile,
 } = require('../../scripts/build-native-backend.js');
+
+function writeRequiredGeneratedProtocolHeaders(sourceDir) {
+  const generatedProtocolDir = path.join(
+    sourceDir,
+    'Source',
+    'UnrealPackageInsightBackend',
+    'Generated',
+    'Protocol',
+  );
+  fs.mkdirSync(generatedProtocolDir, { recursive: true });
+  for (const fileName of REQUIRED_GENERATED_PROTOCOL_HEADERS) {
+    fs.writeFileSync(path.join(generatedProtocolDir, fileName), fileName);
+  }
+  return generatedProtocolDir;
+}
 
 test('parseArgs accepts engine root and optional configuration', () => {
   assert.deepEqual(parseArgs(['--engine-root', 'C:\\UE', '--configuration', 'Shipping']), {
@@ -90,6 +108,29 @@ test('exports orchestration helper functions used by the build script', () => {
   assert.equal(typeof repoRootFromScript, 'function');
 });
 
+test('getProgramGeneratedProtocolDir points at Program-local generated headers', () => {
+  assert.equal(
+    getProgramGeneratedProtocolDir('C:\\repo\\UnrealPackageInsight'),
+    'C:\\repo\\UnrealPackageInsight\\ue-backend\\UnrealPackageInsightBackend\\Source\\UnrealPackageInsightBackend\\Generated\\Protocol',
+  );
+});
+
+test('assertProgramGeneratedProtocolHeaders requires every generated C++ protocol header', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-generated-protocol-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const generatedProtocolDir = path.join(root, 'Generated', 'Protocol');
+  fs.mkdirSync(generatedProtocolDir, { recursive: true });
+
+  for (const fileName of REQUIRED_GENERATED_PROTOCOL_HEADERS.filter((name) => name !== 'upi_iostore_analysis_generated.h')) {
+    fs.writeFileSync(path.join(generatedProtocolDir, fileName), fileName);
+  }
+
+  assert.throws(
+    () => assertProgramGeneratedProtocolHeaders(generatedProtocolDir),
+    /Generated protocol C\+\+ header missing: .*upi_iostore_analysis_generated\.h/,
+  );
+});
+
 test('findBuiltDll discovers the newest backend DLL under Engine/Binaries/Win64', (t) => {
   const engineRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-built-dll-'));
   t.after(() => fs.rmSync(engineRoot, { recursive: true, force: true }));
@@ -127,6 +168,32 @@ test('buildNativeBackends preserves existing staged source when input validation
   assert.equal(fs.existsSync(markerPath), true);
 });
 
+test('buildNativeBackends preserves existing staged source when generated protocol headers are missing', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-build-generated-guard-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const repoRoot = path.join(root, 'repo');
+  const engineRoot = path.join(root, 'engine');
+  const sourceDir = path.join(repoRoot, 'ue-backend', 'UnrealPackageInsightBackend');
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.writeFileSync(path.join(sourceDir, 'UnrealPackageInsightBackend.Target.cs'), 'target');
+  const destinationDir = path.join(engineRoot, 'Engine', 'Source', 'Programs', 'UnrealPackageInsightBackend');
+  const markerPath = path.join(destinationDir, 'keep.marker');
+  fs.mkdirSync(destinationDir, { recursive: true });
+  fs.writeFileSync(markerPath, 'existing');
+  const versionPath = path.join(engineRoot, 'Engine', 'Build', 'Build.version');
+  fs.mkdirSync(path.dirname(versionPath), { recursive: true });
+  fs.writeFileSync(versionPath, JSON.stringify({ MajorVersion: 5, MinorVersion: 7, PatchVersion: 4 }));
+  const buildBat = path.join(engineRoot, 'Engine', 'Build', 'BatchFiles', 'Build.bat');
+  fs.mkdirSync(path.dirname(buildBat), { recursive: true });
+  fs.writeFileSync(buildBat, '');
+
+  assert.throws(
+    () => buildNativeBackends({ repoRoot, engineRoot }),
+    /Generated protocol C\+\+ directory missing:/,
+  );
+  assert.equal(fs.existsSync(markerPath), true);
+});
+
 test('buildNativeBackends preserves existing staged source when configuration is invalid', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-build-config-guard-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -135,6 +202,7 @@ test('buildNativeBackends preserves existing staged source when configuration is
   const sourceDir = path.join(repoRoot, 'ue-backend', 'UnrealPackageInsightBackend');
   fs.mkdirSync(sourceDir, { recursive: true });
   fs.writeFileSync(path.join(sourceDir, 'UnrealPackageInsightBackend.Target.cs'), 'target');
+  writeRequiredGeneratedProtocolHeaders(sourceDir);
   const destinationDir = path.join(engineRoot, 'Engine', 'Source', 'Programs', 'UnrealPackageInsightBackend');
   const markerPath = path.join(destinationDir, 'keep.marker');
   fs.mkdirSync(destinationDir, { recursive: true });
@@ -290,6 +358,7 @@ test('buildNativeBackends preserves existing staged source when Build.bat is not
   const sourceDir = path.join(repoRoot, 'ue-backend', 'UnrealPackageInsightBackend');
   fs.mkdirSync(sourceDir, { recursive: true });
   fs.writeFileSync(path.join(sourceDir, 'UnrealPackageInsightBackend.Target.cs'), 'target');
+  writeRequiredGeneratedProtocolHeaders(sourceDir);
   const destinationDir = path.join(engineRoot, 'Engine', 'Source', 'Programs', 'UnrealPackageInsightBackend');
   const markerPath = path.join(destinationDir, 'keep.marker');
   fs.mkdirSync(destinationDir, { recursive: true });
@@ -312,6 +381,7 @@ test('buildNativeBackends stages and builds all configurations by default', (t) 
   const sourceDir = path.join(repoRoot, 'ue-backend', 'UnrealPackageInsightBackend');
   fs.mkdirSync(sourceDir, { recursive: true });
   fs.writeFileSync(path.join(sourceDir, 'UnrealPackageInsightBackend.Target.cs'), 'target');
+  writeRequiredGeneratedProtocolHeaders(sourceDir);
   const versionPath = path.join(engineRoot, 'Engine', 'Build', 'Build.version');
   fs.mkdirSync(path.dirname(versionPath), { recursive: true });
   fs.writeFileSync(versionPath, JSON.stringify({ MajorVersion: 5, MinorVersion: 7, PatchVersion: 4 }));
@@ -356,6 +426,18 @@ test('buildNativeBackends stages and builds all configurations by default', (t) 
     'Programs',
     'UnrealPackageInsightBackend',
     'UnrealPackageInsightBackend.Target.cs',
+  )), true);
+  assert.equal(fs.existsSync(path.join(
+    engineRoot,
+    'Engine',
+    'Source',
+    'Programs',
+    'UnrealPackageInsightBackend',
+    'Source',
+    'UnrealPackageInsightBackend',
+    'Generated',
+    'Protocol',
+    'upi_common_generated.h',
   )), true);
   for (const entry of result) {
     assert.equal(fs.existsSync(path.join(entry.nativeDir, 'backend.json')), true);

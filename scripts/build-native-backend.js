@@ -10,6 +10,12 @@ const ALL_CONFIGURATIONS = ['Debug', 'Development', 'Shipping'];
 const DEFAULT_UNREAL_PLATFORM = 'Win64';
 const BACKEND_DLL_NAME = 'UnrealPackageInsightBackend.dll';
 const PROTOCOL_VERSION = 1;
+const REQUIRED_GENERATED_PROTOCOL_HEADERS = [
+  'upi_backend_info_generated.h',
+  'upi_common_generated.h',
+  'upi_iostore_analysis_generated.h',
+  'upi_pak_analysis_generated.h',
+];
 
 function parseArgs(argv) {
   const parsed = {};
@@ -76,6 +82,31 @@ function getNativeBackendDir({
     `ue-${engineVersion}`,
     configurationKey(configuration),
   );
+}
+
+function getProgramGeneratedProtocolDir(repoRoot) {
+  return path.join(
+    repoRoot,
+    'ue-backend',
+    'UnrealPackageInsightBackend',
+    'Source',
+    'UnrealPackageInsightBackend',
+    'Generated',
+    'Protocol',
+  );
+}
+
+function assertProgramGeneratedProtocolHeaders(generatedProtocolDir) {
+  if (!fs.existsSync(generatedProtocolDir) || !fs.statSync(generatedProtocolDir).isDirectory()) {
+    throw new Error(`Generated protocol C++ directory missing: ${generatedProtocolDir}. Run npm.cmd --prefix node-shell run generate-protocol before building native backend.`);
+  }
+
+  for (const fileName of REQUIRED_GENERATED_PROTOCOL_HEADERS) {
+    const filePath = path.join(generatedProtocolDir, fileName);
+    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+      throw new Error(`Generated protocol C++ header missing: ${filePath}. Run npm.cmd --prefix node-shell run generate-protocol before building native backend.`);
+    }
+  }
 }
 
 function createBackendManifest({
@@ -224,6 +255,8 @@ function buildNativeBackends({
   if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
     throw new Error(`Backend source directory missing: ${sourceDir}`);
   }
+  const generatedProtocolDir = getProgramGeneratedProtocolDir(repoRoot);
+  assertProgramGeneratedProtocolHeaders(generatedProtocolDir);
   const engineVersion = readEngineVersion(engineRoot);
   if (!fs.existsSync(buildBat) || !fs.statSync(buildBat).isFile()) {
     throw new Error(`Build.bat missing or not a file: ${buildBat}`);
@@ -289,6 +322,8 @@ module.exports = {
   BACKEND_DLL_NAME,
   DEFAULT_UNREAL_PLATFORM,
   PROTOCOL_VERSION,
+  REQUIRED_GENERATED_PROTOCOL_HEADERS,
+  assertProgramGeneratedProtocolHeaders,
   buildNativeBackends,
   configurationKey,
   copyDirectory,
@@ -299,6 +334,7 @@ module.exports = {
   findBuiltDll,
   findFiles,
   getNativeBackendDir,
+  getProgramGeneratedProtocolDir,
   main,
   normalizeConfiguration,
   parseArgs,
