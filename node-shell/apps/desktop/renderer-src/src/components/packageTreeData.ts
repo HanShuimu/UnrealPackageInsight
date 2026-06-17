@@ -4,11 +4,11 @@ import type { PackageTreeNode } from '../types/upi';
 const SUPPORTED_FILE_KINDS = new Set(['pak', 'utoc', 'ucas']);
 
 export function isSupportedFileNode(node: PackageTreeNode): boolean {
-  return Boolean(node.path && node.kind && SUPPORTED_FILE_KINDS.has(node.kind));
+  return Boolean(node.kind && SUPPORTED_FILE_KINDS.has(node.kind) && nodeKey(node));
 }
 
 export function nodeKey(node: PackageTreeNode): string {
-  return node.path || node.name || '';
+  return node.path || node.relativePath || node.name || 'unnamed';
 }
 
 export function toAntTreeData(node: PackageTreeNode): DataNode[] {

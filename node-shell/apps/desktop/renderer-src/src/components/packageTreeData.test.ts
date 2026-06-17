@@ -49,4 +49,22 @@ describe('packageTreeData', () => {
   test('collects only supported file keys', () => {
     expect(supportedFileKeys(scanTree)).toEqual(['C:\\Paks\\A.pak', 'C:\\Paks\\Nested\\global.utoc']);
   });
+
+  test('keeps supported relative path only nodes selectable', () => {
+    const looseNode: PackageTreeNode = {
+      name: 'A.pak',
+      kind: 'pak',
+      relativePath: 'Loose/A.pak',
+    };
+
+    expect(toAntTreeData(looseNode)).toEqual([
+      {
+        key: 'Loose/A.pak',
+        title: 'A.pak',
+        selectable: true,
+        children: undefined,
+      },
+    ]);
+    expect(supportedFileKeys(looseNode)).toEqual(['Loose/A.pak']);
+  });
 });
