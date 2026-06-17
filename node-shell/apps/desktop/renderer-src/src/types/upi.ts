@@ -1,15 +1,18 @@
+export type IpcSeverity = string | number;
+export type IpcStatus = string | number;
+
 export type Issue = {
-  severity?: string;
+  severity?: IpcSeverity;
   code?: string;
   message?: string;
 };
 
 export type BackendInfo = {
-  status?: string;
+  status?: IpcStatus;
   backendName?: string;
   backendVersion?: string;
   unrealVersion?: string;
-  protocolVersion?: string;
+  protocolVersion?: string | number;
   backendCount?: number;
   backends?: Array<{ id: string; label: string }>;
   issues?: Issue[];
@@ -51,7 +54,7 @@ export type BackendSelectionRequest = {
 };
 
 export type AnalysisResult = {
-  status?: string;
+  status?: IpcStatus;
   issues?: Issue[];
   overview?: Record<string, unknown>;
   packages?: unknown[];
