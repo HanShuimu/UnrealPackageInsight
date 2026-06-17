@@ -1,4 +1,5 @@
 import type { ColumnsType } from 'antd/es/table';
+import { formatLabel, formatValue } from '../utils/format';
 
 export type TableRecord = Record<string, unknown>;
 
@@ -38,39 +39,6 @@ export function rowKey(row: unknown, index: number): string {
   }
 
   return `row-${index}`;
-}
-
-function formatLabel(key: string): string {
-  const label = key
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/[_-]+/g, ' ')
-    .trim();
-
-  if (!label) {
-    return key;
-  }
-
-  return label.charAt(0).toUpperCase() + label.slice(1);
-}
-
-function formatValue(value: unknown): string {
-  if (value === null || value === undefined) {
-    return '';
-  }
-
-  if (typeof value === 'string') {
-    return value;
-  }
-
-  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
-    return String(value);
-  }
-
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
 }
 
 export function buildColumns(rows: unknown[]): ColumnsType<TableRecord> {
