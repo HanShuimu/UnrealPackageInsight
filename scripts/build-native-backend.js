@@ -238,6 +238,7 @@ module.exports = {
   createBackendManifest,
   defaultRunBuild,
   defaultSmokeCheck,
+  ensureDirectory,
   findBuiltDll,
   findFiles,
   getNativeBackendDir,
@@ -245,5 +246,7 @@ module.exports = {
   normalizeConfiguration,
   parseArgs,
   readEngineVersion,
+  removeDirectory,
+  repoRootFromScript,
   resolveConfigurations,
 };

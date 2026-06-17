@@ -8,10 +8,13 @@ const {
   ALL_CONFIGURATIONS,
   buildNativeBackends,
   createBackendManifest,
+  ensureDirectory,
   findBuiltDll,
   getNativeBackendDir,
   parseArgs,
   readEngineVersion,
+  removeDirectory,
+  repoRootFromScript,
   resolveConfigurations,
 } = require('../../scripts/build-native-backend.js');
 
@@ -78,14 +81,27 @@ test('createBackendManifest records configuration-specific backend id', () => {
   });
 });
 
+test('exports orchestration helper functions used by the build script', () => {
+  assert.equal(typeof ensureDirectory, 'function');
+  assert.equal(typeof removeDirectory, 'function');
+  assert.equal(typeof repoRootFromScript, 'function');
+});
+
 test('findBuiltDll discovers the newest backend DLL under Engine/Binaries/Win64', (t) => {
   const engineRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-built-dll-'));
   t.after(() => fs.rmSync(engineRoot, { recursive: true, force: true }));
-  const dllPath = path.join(engineRoot, 'Engine', 'Binaries', 'Win64', 'UnrealPackageInsightBackend', 'UnrealPackageInsightBackend.dll');
-  fs.mkdirSync(path.dirname(dllPath), { recursive: true });
-  fs.writeFileSync(dllPath, '');
+  const olderDllPath = path.join(engineRoot, 'Engine', 'Binaries', 'Win64', 'OldBackend', 'UnrealPackageInsightBackend.dll');
+  const newerDllPath = path.join(engineRoot, 'Engine', 'Binaries', 'Win64', 'UnrealPackageInsightBackend', 'UnrealPackageInsightBackend.dll');
+  fs.mkdirSync(path.dirname(olderDllPath), { recursive: true });
+  fs.mkdirSync(path.dirname(newerDllPath), { recursive: true });
+  fs.writeFileSync(olderDllPath, '');
+  fs.writeFileSync(newerDllPath, '');
+  const olderTime = new Date('2026-01-01T00:00:00.000Z');
+  const newerTime = new Date('2026-01-01T00:01:00.000Z');
+  fs.utimesSync(olderDllPath, olderTime, olderTime);
+  fs.utimesSync(newerDllPath, newerTime, newerTime);
 
-  assert.equal(findBuiltDll(engineRoot), dllPath);
+  assert.equal(findBuiltDll(engineRoot), newerDllPath);
 });
 
 test('buildNativeBackends stages and builds all configurations by default', (t) => {
@@ -104,6 +120,7 @@ test('buildNativeBackends stages and builds all configurations by default', (t) 
   fs.writeFileSync(buildBat, '');
 
   const calls = [];
+  const smokeCalls = [];
   const result = buildNativeBackends({
     repoRoot,
     engineRoot,
@@ -116,7 +133,8 @@ test('buildNativeBackends stages and builds all configurations by default', (t) 
       fs.writeFileSync(dllPath, configuration);
       return dllPath;
     },
-    smokeCheck() {
+    smokeCheck({ dllPath, manifest }) {
+      smokeCalls.push({ dllPath, manifest });
       return { ok: true };
     },
   });
@@ -127,6 +145,9 @@ test('buildNativeBackends stages and builds all configurations by default', (t) 
     'ue-5.7.4-win32-x64-development',
     'ue-5.7.4-win32-x64-shipping',
   ]);
+  assert.deepEqual(smokeCalls.map((entry) => entry.manifest.configuration), ['Debug', 'Development', 'Shipping']);
+  assert.deepEqual(smokeCalls.map((entry) => entry.dllPath), result.map((entry) => entry.dllPath));
+  assert.deepEqual(smokeCalls.map((entry) => entry.manifest.id), result.map((entry) => entry.manifest.id));
   for (const entry of result) {
     assert.equal(fs.existsSync(path.join(entry.nativeDir, 'backend.json')), true);
     assert.equal(fs.existsSync(path.join(entry.nativeDir, 'UnrealPackageInsightBackend.dll')), true);
