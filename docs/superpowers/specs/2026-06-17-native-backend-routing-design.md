@@ -111,6 +111,27 @@ scripts/build-native-backend.js
 scripts/generate-protocol.js
 ```
 
+Add a root-level `package.json` as the developer command hub. The simple native build entry
+point is:
+
+```text
+npm run build -- --engine-root C:\WORKSPACE_UE\UnrealEngine
+```
+
+`build` is an alias for the default native backend build configuration, `Development`.
+Configuration-specific commands are also exposed:
+
+```text
+npm run build:native -- --engine-root C:\WORKSPACE_UE\UnrealEngine --configuration Development
+npm run build:native:debug -- --engine-root C:\WORKSPACE_UE\UnrealEngine
+npm run build:native:development -- --engine-root C:\WORKSPACE_UE\UnrealEngine
+npm run build:native:shipping -- --engine-root C:\WORKSPACE_UE\UnrealEngine
+```
+
+The npm commands may require `--engine-root`; that is a build-time input, not a runtime GUI or
+CLI startup dependency. The GUI and CLI still choose backends from staged manifests and do not
+use EngineRoot to run.
+
 `scripts/build-native-backend.js` owns the whole native backend generation flow:
 
 1. Parse arguments, for example:
@@ -326,7 +347,8 @@ The workflow states:
 
 - every change under `ue-backend/**/*.cpp`, `ue-backend/**/*.h`, or `ue-backend/**/*.cs` requires
   a native backend rebuild,
-- use `scripts/build-native-backend.js`, not project-local PowerShell scripts,
+- use the root npm build commands, which call `scripts/build-native-backend.js`, not
+  project-local PowerShell scripts,
 - build each required configuration explicitly,
 - verify `backend.json`, the staged DLL, and `UPI_GetBackendInfoV1`,
 - run the relevant Node routing tests,
