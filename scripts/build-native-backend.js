@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -100,14 +101,147 @@ function createBackendManifest({
   };
 }
 
+function ensureDirectory(directory) {
+  fs.mkdirSync(directory, { recursive: true });
+}
+
+function removeDirectory(directory) {
+  fs.rmSync(directory, { recursive: true, force: true });
+}
+
+function copyDirectory(source, destination) {
+  removeDirectory(destination);
+  fs.cpSync(source, destination, { recursive: true });
+}
+
+function findFiles(root, fileName, found = []) {
+  if (!fs.existsSync(root)) {
+    return found;
+  }
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const entryPath = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      findFiles(entryPath, fileName, found);
+    } else if (entry.isFile() && entry.name === fileName) {
+      found.push(entryPath);
+    }
+  }
+  return found;
+}
+
+function findBuiltDll(engineRoot) {
+  const binariesDir = path.join(engineRoot, 'Engine', 'Binaries', 'Win64');
+  const dlls = findFiles(binariesDir, BACKEND_DLL_NAME)
+    .map((filePath) => ({ filePath, mtimeMs: fs.statSync(filePath).mtimeMs }))
+    .sort((left, right) => right.mtimeMs - left.mtimeMs);
+  if (dlls.length === 0) {
+    throw new Error(`Build completed but ${BACKEND_DLL_NAME} was not found under ${binariesDir}`);
+  }
+  return dlls[0].filePath;
+}
+
+function defaultRunBuild({ engineRoot, configuration }) {
+  const buildBat = path.join(engineRoot, 'Engine', 'Build', 'BatchFiles', 'Build.bat');
+  execFileSync(buildBat, [
+    'UnrealPackageInsightBackend',
+    DEFAULT_UNREAL_PLATFORM,
+    configuration,
+    '-WaitMutex',
+  ], { stdio: 'inherit' });
+  return findBuiltDll(engineRoot);
+}
+
+function defaultSmokeCheck({ dllPath }) {
+  if (!fs.existsSync(dllPath)) {
+    throw new Error(`Staged DLL missing: ${dllPath}`);
+  }
+  return { ok: true };
+}
+
+function buildNativeBackends({
+  repoRoot,
+  engineRoot,
+  configuration,
+  hostPlatform = process.platform,
+  hostArch = process.arch,
+  runBuild = defaultRunBuild,
+  smokeCheck = defaultSmokeCheck,
+}) {
+  if (!engineRoot) {
+    throw new Error('Missing required --engine-root');
+  }
+  const sourceDir = path.join(repoRoot, 'ue-backend', 'UnrealPackageInsightBackend');
+  const destinationDir = path.join(engineRoot, 'Engine', 'Source', 'Programs', 'UnrealPackageInsightBackend');
+  copyDirectory(sourceDir, destinationDir);
+
+  const engineVersion = readEngineVersion(engineRoot);
+  const results = [];
+  for (const buildConfiguration of resolveConfigurations({ configuration })) {
+    const builtDll = runBuild({ engineRoot, configuration: buildConfiguration });
+    const nativeDir = getNativeBackendDir({
+      repoRoot,
+      hostPlatform,
+      hostArch,
+      engineVersion,
+      configuration: buildConfiguration,
+    });
+    ensureDirectory(nativeDir);
+    const stagedDll = path.join(nativeDir, BACKEND_DLL_NAME);
+    fs.copyFileSync(builtDll, stagedDll);
+    const manifest = createBackendManifest({
+      engineVersion,
+      hostPlatform,
+      hostArch,
+      unrealPlatform: DEFAULT_UNREAL_PLATFORM,
+      configuration: buildConfiguration,
+    });
+    fs.writeFileSync(path.join(nativeDir, 'backend.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+    smokeCheck({ dllPath: stagedDll, manifest });
+    results.push({ manifest, nativeDir, dllPath: stagedDll });
+  }
+  return results;
+}
+
+function repoRootFromScript() {
+  return path.resolve(__dirname, '..');
+}
+
+function main(argv = process.argv.slice(2)) {
+  const args = parseArgs(argv);
+  const results = buildNativeBackends({
+    repoRoot: repoRootFromScript(),
+    engineRoot: args.engineRoot,
+    configuration: args.configuration,
+  });
+  for (const result of results) {
+    console.log(`${result.manifest.id} ${result.nativeDir}`);
+  }
+}
+
+if (require.main === module) {
+  try {
+    main();
+  } catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
+  }
+}
+
 module.exports = {
   ALL_CONFIGURATIONS,
   BACKEND_DLL_NAME,
   DEFAULT_UNREAL_PLATFORM,
   PROTOCOL_VERSION,
+  buildNativeBackends,
   configurationKey,
+  copyDirectory,
   createBackendManifest,
+  defaultRunBuild,
+  defaultSmokeCheck,
+  findBuiltDll,
+  findFiles,
   getNativeBackendDir,
+  main,
   normalizeConfiguration,
   parseArgs,
   readEngineVersion,
