@@ -228,7 +228,7 @@ async function createWindow({ BrowserWindowClass = BrowserWindow } = {}) {
     },
   });
 
-  await window.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  await window.loadFile(path.join(__dirname, 'renderer-dist', 'index.html'));
   return window;
 }
 

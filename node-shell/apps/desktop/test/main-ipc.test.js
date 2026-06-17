@@ -393,7 +393,7 @@ test('createWindow sets a minimum size that matches the renderer shell constrain
   assert.equal(window, createdWindows[0]);
   assert.equal(window.options.minWidth, 760);
   assert.equal(window.options.minHeight, 560);
-  assert.match(window.loadedFile, /renderer[\\/]index\.html$/);
+  assert.match(window.loadedFile, /renderer-dist[\\/]index\.html$/);
 });
 
 test('startDesktopApp shows an error dialog and quits when startup initialization fails', async () => {
