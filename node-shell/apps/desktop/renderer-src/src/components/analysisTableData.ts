@@ -52,12 +52,19 @@ export function buildColumns(rows: unknown[]): ColumnsType<TableRecord> {
 }
 
 export function buildDataSource(rows: unknown[]): TableRecord[] {
-  const seenKeys = new Set<string>();
+  const emittedKeys = new Set<string>();
 
   return rows.map((row, index) => {
     const baseKey = rowKey(row, index);
-    const uniqueKey = seenKeys.has(baseKey) ? `${baseKey}::${index}` : baseKey;
-    seenKeys.add(baseKey);
+    let uniqueKey = baseKey;
+    let retry = 0;
+
+    while (emittedKeys.has(uniqueKey)) {
+      uniqueKey = retry === 0 ? `${baseKey}::${index}` : `${baseKey}::${index}::${retry}`;
+      retry += 1;
+    }
+
+    emittedKeys.add(uniqueKey);
 
     return {
       ...normalizeRow(row),

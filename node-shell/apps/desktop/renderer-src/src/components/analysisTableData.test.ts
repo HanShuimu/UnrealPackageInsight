@@ -56,4 +56,15 @@ describe('analysisTableData', () => {
       { id: 42, offset: 1 },
     ]).map((row) => row.__rowKey)).toEqual(['42', '42::1']);
   });
+
+  test('retries generated suffixes when later base keys match emitted row keys', () => {
+    const rowKeys = buildDataSource([
+      { name: 'A', offset: 0 },
+      { name: 'A', offset: 1 },
+      { name: 'A::1', offset: 2 },
+    ]).map((row) => row.__rowKey);
+
+    expect(rowKeys).toEqual(['A', 'A::1', 'A::1::2']);
+    expect(new Set(rowKeys).size).toBe(rowKeys.length);
+  });
 });
