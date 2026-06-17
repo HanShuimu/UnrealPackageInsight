@@ -78,6 +78,10 @@ function getProtocolOutputPaths(repoRoot = repoRootFromScript()) {
   };
 }
 
+function removeLegacyCppOutput(paths) {
+  fs.rmSync(path.join(paths.nodeGeneratedDir, 'cpp'), { recursive: true, force: true });
+}
+
 function ensureEmptyDirectory(directory) {
   fs.rmSync(directory, { recursive: true, force: true });
   fs.mkdirSync(directory, { recursive: true });
@@ -195,6 +199,7 @@ function main(argv = process.argv.slice(2)) {
 
   const tsc = getTypescriptCompiler(paths.nodeShellDir);
 
+  removeLegacyCppOutput(paths);
   for (const outDir of [paths.cppOut, paths.tsOut, paths.jsOut]) {
     ensureEmptyDirectory(outDir);
   }
@@ -258,6 +263,7 @@ module.exports = {
   main,
   normalizeLineEndings,
   parseArgs,
+  removeLegacyCppOutput,
   setGeneratedTypescriptBarrel,
 };
 

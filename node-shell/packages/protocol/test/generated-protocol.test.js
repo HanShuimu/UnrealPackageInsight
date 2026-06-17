@@ -30,10 +30,16 @@ test('commits generated FlatBuffers C++ headers in the Unreal Program and Common
     path.join(generatedRoot, 'js', 'upi', 'v1', 'pak-analysis-response.js'),
     path.join(generatedRoot, 'js', 'upi', 'v1', 'io-store-analysis-response.js'),
   ];
+  const expectedTsFiles = [
+    path.join(generatedRoot, 'ts', 'upi', 'v1.ts'),
+    path.join(generatedRoot, 'ts', 'upi', 'v1', 'backend-info-response.ts'),
+    path.join(generatedRoot, 'ts', 'upi', 'v1', 'pak-analysis-response.ts'),
+    path.join(generatedRoot, 'ts', 'upi', 'v1', 'io-store-analysis-response.ts'),
+  ];
 
   assert.equal(fs.existsSync(oldCppGeneratedRoot), false, `remove duplicate generated C++ path: ${oldCppGeneratedRoot}`);
 
-  for (const filePath of [...expectedCppFiles, ...expectedJsFiles]) {
+  for (const filePath of [...expectedCppFiles, ...expectedJsFiles, ...expectedTsFiles]) {
     assert.equal(fs.existsSync(filePath), true, `missing generated file: ${filePath}`);
   }
 });

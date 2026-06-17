@@ -10,6 +10,7 @@ const {
   getTypescriptCompiler,
   normalizeLineEndings,
   parseArgs,
+  removeLegacyCppOutput,
   setGeneratedTypescriptBarrel,
 } = require('../../scripts/generate-protocol.js');
 
@@ -53,6 +54,26 @@ test('getProtocolOutputPaths routes C++ to the Unreal Program and JS/TS to the N
     jsOut: path.join(repoRoot, 'node-shell', 'packages', 'protocol', 'generated', 'js'),
     nodeGeneratedDir: path.join(repoRoot, 'node-shell', 'packages', 'protocol', 'generated'),
   });
+});
+
+test('removeLegacyCppOutput removes stale Node protocol C++ output only', () => {
+  const tempDir = makeTempDir();
+  try {
+    const paths = getProtocolOutputPaths(tempDir);
+    const legacyCppDir = path.join(paths.nodeGeneratedDir, 'cpp');
+    const tsDir = path.join(paths.nodeGeneratedDir, 'ts');
+    fs.mkdirSync(path.join(legacyCppDir, 'nested'), { recursive: true });
+    fs.mkdirSync(tsDir, { recursive: true });
+    fs.writeFileSync(path.join(legacyCppDir, 'nested', 'stale_generated.h'), 'stale');
+    fs.writeFileSync(path.join(tsDir, 'keep.ts'), 'keep');
+
+    removeLegacyCppOutput(paths);
+
+    assert.equal(fs.existsSync(legacyCppDir), false);
+    assert.equal(fs.existsSync(path.join(tsDir, 'keep.ts')), true);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 });
 
 test('buildFlatcCommands builds cpp and ts commands with common schema first', () => {
