@@ -11,13 +11,14 @@ Run this workflow after any change under:
 Use the root npm command:
 
 ```powershell
-npm run build -- --engine-root C:\WORKSPACE_UE\UnrealEngine
+npm.cmd run build -- --engine-root C:\WORKSPACE_UE\UnrealEngine
 ```
 
 This builds and stages `Debug`, `Development`, and `Shipping` native backends for the engine
 version in `Engine/Build/Build.version`.
 
-Staged outputs use this shape:
+Staged outputs use this shape, where `<configurationKey>` is lowercase (`debug`, `development`,
+or `shipping`):
 
 - `node-shell/native/<platform>-<arch>/ue-<major.minor.patch>/<configurationKey>/backend.json`
 - `node-shell/native/<platform>-<arch>/ue-<major.minor.patch>/<configurationKey>/UnrealPackageInsightBackend.dll`
@@ -25,7 +26,7 @@ Staged outputs use this shape:
 For a single configuration during local iteration:
 
 ```powershell
-npm run build:native:development -- --engine-root C:\WORKSPACE_UE\UnrealEngine
+npm.cmd run build:native:development -- --engine-root C:\WORKSPACE_UE\UnrealEngine
 ```
 
 ## Verify
@@ -34,8 +35,9 @@ Before finishing:
 
 - confirm each expected `backend.json` exists,
 - confirm each staged `UnrealPackageInsightBackend.dll` exists,
-- confirm the build script smoke-check called `UPI_GetBackendInfoV1`,
-- run `npm --prefix node-shell test`.
+- confirm the build script smoke check completed and printed backend/protocol info such as
+  `Backend`, `Unreal`, and `Protocol`,
+- run `npm.cmd --prefix node-shell test`.
 
 ## Reporting
 
