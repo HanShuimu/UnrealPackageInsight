@@ -3,6 +3,9 @@ const path = require('node:path');
 
 const PAK_MAGIC = 0x5A6F12E1;
 const UTOC_MAGIC = Buffer.from('-==--==--==--==-', 'ascii');
+const PAK_FOOTER_SEARCH_BYTES = 512;
+const UTOC_HEADER_READ_BYTES = 96;
+const UTOC_MIN_HEADER_BYTES = 52;
 
 const PAK_VERSION_NAMES = new Map([
   [1, 'PakFile_Version_Initial'],
@@ -31,13 +34,28 @@ const UTOC_VERSION_NAMES = new Map([
 ]);
 
 function ext(filePath) {
-  return path.extname(filePath).toLowerCase();
+  return path.win32.extname(filePath).toLowerCase();
+}
+
+function readFileWindow(filePath, length, position) {
+  const buffer = Buffer.alloc(length);
+  let fd;
+  try {
+    fd = fs.openSync(filePath, 'r');
+    const bytesRead = fs.readSync(fd, buffer, 0, length, position);
+    return buffer.subarray(0, bytesRead);
+  } finally {
+    if (fd !== undefined) {
+      fs.closeSync(fd);
+    }
+  }
 }
 
 function probePak(filePath) {
-  const buffer = fs.readFileSync(filePath);
-  const searchStart = Math.max(0, buffer.length - 512);
-  for (let offset = searchStart; offset <= buffer.length - 8; offset += 1) {
+  const { size } = fs.statSync(filePath);
+  const readLength = Math.min(PAK_FOOTER_SEARCH_BYTES, size);
+  const buffer = readFileWindow(filePath, readLength, size - readLength);
+  for (let offset = 0; offset <= buffer.length - 8; offset += 1) {
     if (buffer.readUInt32LE(offset) === PAK_MAGIC) {
       const version = buffer.readInt32LE(offset + 4);
       return {
@@ -52,8 +70,8 @@ function probePak(filePath) {
 }
 
 function probeUtoc(filePath) {
-  const buffer = fs.readFileSync(filePath);
-  if (buffer.length < 52 || !buffer.subarray(0, UTOC_MAGIC.length).equals(UTOC_MAGIC)) {
+  const buffer = readFileWindow(filePath, UTOC_HEADER_READ_BYTES, 0);
+  if (buffer.length < UTOC_MIN_HEADER_BYTES || !buffer.subarray(0, UTOC_MAGIC.length).equals(UTOC_MAGIC)) {
     throw new Error('probe.utoc_header_invalid');
   }
   const tocFormatVersion = buffer.readUInt32LE(16);
