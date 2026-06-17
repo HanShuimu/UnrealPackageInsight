@@ -41,12 +41,12 @@ must not claim that Pak version or IoStore TOC version uniquely identifies UE 5.
 ## Native Artifact Layout
 
 Native backends are staged under `node-shell/native` using the Node/Electron host platform and
-architecture, then the Unreal major/minor version, then the backend configuration:
+architecture, then the Unreal major/minor/patch version, then the backend configuration:
 
 ```text
 node-shell/native/
   win32-x64/
-    ue-5.7/
+    ue-5.7.4/
       debug/
         UnrealPackageInsightBackend.dll
         backend.json
@@ -67,8 +67,8 @@ Each staged backend directory contains a generated `backend.json`:
 
 ```json
 {
-  "id": "ue-5.7-win32-x64-development",
-  "engineVersion": "5.7",
+  "id": "ue-5.7.4-win32-x64-development",
+  "engineVersion": "5.7.4",
   "hostPlatform": "win32",
   "hostArch": "x64",
   "unrealPlatform": "Win64",
@@ -120,7 +120,8 @@ scripts/generate-protocol.js
    ```
 
 2. Read `<EngineRoot>/Engine/Build/Build.version` and derive `engineVersion` as
-   `major.minor`.
+   `major.minor.patch` from `MajorVersion`, `MinorVersion`, and `PatchVersion`. If any of
+   those fields are missing or non-numeric, fail the build script with a clear error.
 3. Stage `ue-backend/UnrealPackageInsightBackend` into
    `<EngineRoot>/Engine/Source/Programs/UnrealPackageInsightBackend`.
 4. Invoke Unreal Build Tool through:
@@ -133,7 +134,7 @@ scripts/generate-protocol.js
 6. Copy the DLL into:
 
    ```text
-   node-shell/native/<host-platform>-<host-arch>/ue-<major.minor>/<configuration-key>/
+   node-shell/native/<host-platform>-<host-arch>/ue-<major.minor.patch>/<configuration-key>/
    ```
 
 7. Generate `backend.json` in the same directory.
@@ -221,7 +222,7 @@ If multiple backends match:
 Candidate sort order for display and default highlight:
 
 1. `Development` configuration first,
-2. higher `engineVersion` first,
+2. higher `engineVersion` first using numeric major/minor/patch comparison,
 3. manifest id lexicographically as a stable final key.
 
 The GUI still requires user confirmation when multiple candidates exist.
@@ -239,7 +240,7 @@ When a selected file has multiple compatible backends, the renderer shows a choo
 
 - selected file path,
 - detected container type and format version,
-- candidate labels such as `UE 5.7 Development`,
+- candidate labels such as `UE 5.7.4 Development`,
 - candidate ids.
 
 The GUI remembers the user's choice as `filePath -> backendId` for the current session so repeat
