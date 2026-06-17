@@ -1,0 +1,23 @@
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+
+.app-shell {
+  display: grid;
+  min-width: 760px;
+  height: 100vh;
+}
+
+.app-bootstrap {
+  display: grid;
+  place-items: center;
+  color: #4b5563;
+}

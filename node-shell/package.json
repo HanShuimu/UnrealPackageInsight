@@ -5,18 +5,35 @@
   "type": "commonjs",
   "main": "bin/upi-gui.js",
   "scripts": {
-    "test": "node --test \"test/*.test.js\" \"packages/protocol/test/*.test.js\" \"packages/backend-core/test/*.test.js\" \"packages/analysis-domain/test/*.test.js\" \"apps/desktop/test/*.test.js\"",
+    "test": "npm run test:node && npm run test:renderer",
+    "test:node": "node --test \"test/*.test.js\" \"packages/protocol/test/*.test.js\" \"packages/backend-core/test/*.test.js\" \"packages/analysis-domain/test/*.test.js\" \"apps/desktop/test/*.test.js\"",
+    "test:renderer": "vitest run --config apps/desktop/vitest.config.ts",
+    "build:renderer": "rsbuild build --config apps/desktop/rsbuild.config.ts",
     "call-backend": "node src/index.js",
     "generate-protocol": "node ../scripts/generate-protocol.js",
-    "gui": "node bin/upi-gui.js",
+    "gui": "npm run build:renderer && node bin/upi-gui.js",
     "cli": "node bin/upi-cli.js"
   },
   "dependencies": {
+    "@rsbuild/core": "^2.0.15",
+    "@rsbuild/plugin-react": "^2.0.1",
+    "antd": "^6.4.4",
     "electron": "^31.0.0",
     "flatbuffers": "^24.3.25",
-    "koffi": "3.0.2"
+    "koffi": "3.0.2",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "unreal-package-insight": "file:..",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
-    "typescript": "^5.4.5"
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "jsdom": "^29.1.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.9"
   }
 }
