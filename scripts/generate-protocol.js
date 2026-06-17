@@ -35,7 +35,7 @@ function parseArgs(argv) {
     const arg = argv[index];
     if (arg === '--flatc') {
       const flatc = argv[index + 1];
-      if (!flatc) {
+      if (!flatc || flatc.startsWith('--')) {
         throw new Error('Missing value for --flatc');
       }
       parsed.flatc = flatc;
@@ -141,17 +141,20 @@ function getFlatcVersion(flatc) {
     if (error.code === 'ENOENT') {
       throw new Error('flatc not found. Install the FlatBuffers compiler or set UPI_FLATC to flatc.exe.');
     }
-    throw new Error(`flatc --version failed for ${flatc}.`);
+    const details = [error.message, error.stderr?.toString(), error.stdout?.toString()]
+      .filter(Boolean)
+      .map((detail) => detail.trim())
+      .filter(Boolean)
+      .join('\n');
+    throw new Error(`flatc --version failed for ${flatc}.${details ? `\n${details}` : ''}`);
   }
   return output.trim().replace(/^flatc version\s+/, '');
 }
 
-function getTypescriptCompiler(nodeShellDir) {
-  if (process.platform !== 'win32') {
-    return 'tsc';
-  }
-  const tsc = path.join(nodeShellDir, 'node_modules', '.bin', 'tsc.cmd');
-  if (!fs.existsSync(tsc)) {
+function getTypescriptCompiler(nodeShellDir, platform = process.platform) {
+  const compilerName = platform === 'win32' ? 'tsc.cmd' : 'tsc';
+  const tsc = path.join(nodeShellDir, 'node_modules', '.bin', compilerName);
+  if (!fs.existsSync(tsc) || !fs.statSync(tsc).isFile()) {
     throw new Error(`TypeScript compiler not found at ${tsc}. Run npm install from node-shell before generating protocol bindings.`);
   }
   return tsc;
@@ -227,6 +230,7 @@ function main(argv = process.argv.slice(2)) {
 module.exports = {
   REQUIRED_FLATC_VERSION,
   buildFlatcCommands,
+  getTypescriptCompiler,
   main,
   normalizeLineEndings,
   parseArgs,
