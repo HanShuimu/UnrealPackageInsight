@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
+const path = require('node:path');
 const test = require('node:test');
 
 const { main: runGuiLauncher } = require('../bin/upi-gui.js');
@@ -21,6 +22,7 @@ test('GUI launcher starts Electron without a DLL argument or backend env injecti
   });
 
   assert.equal(spawns.length, 1);
+  assert.deepEqual(spawns[0][1], [path.join(__dirname, '..', 'apps', 'desktop', 'main.js')]);
   assert.equal(Object.hasOwn(spawns[0][2].env, 'UPI_BACKEND_DLL'), false);
   assert.equal(Object.hasOwn(spawns[0][2].env, 'UPI_ENGINE_ROOT'), false);
 });
