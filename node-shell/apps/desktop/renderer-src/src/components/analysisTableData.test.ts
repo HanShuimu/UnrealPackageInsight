@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { buildColumnKeys, buildColumns, rowKey } from './analysisTableData';
+import { buildColumnKeys, buildColumns, buildDataSource, rowKey } from './analysisTableData';
 
 describe('analysisTableData', () => {
   test('builds ordered union columns from row object keys', () => {
@@ -34,5 +34,26 @@ describe('analysisTableData', () => {
     expect(metadataRender?.({ path: 'C:\\Paks\\A.pak', size: 12n }, {}, 0)).toBe(
       '{"path":"C:\\\\Paks\\\\A.pak","size":"12"}',
     );
+  });
+
+  test('builds distinct data source keys for duplicate path rows', () => {
+    expect(buildDataSource([
+      { path: 'C:\\Paks\\A.pak', offset: 0 },
+      { path: 'C:\\Paks\\A.pak', offset: 1 },
+    ]).map((row) => row.__rowKey)).toEqual(['C:\\Paks\\A.pak', 'C:\\Paks\\A.pak::1']);
+  });
+
+  test('builds distinct data source keys for duplicate name rows', () => {
+    expect(buildDataSource([
+      { name: 'chunk-1', offset: 0 },
+      { name: 'chunk-1', offset: 1 },
+    ]).map((row) => row.__rowKey)).toEqual(['chunk-1', 'chunk-1::1']);
+  });
+
+  test('builds distinct data source keys for duplicate id rows', () => {
+    expect(buildDataSource([
+      { id: 42, offset: 0 },
+      { id: 42, offset: 1 },
+    ]).map((row) => row.__rowKey)).toEqual(['42', '42::1']);
   });
 });

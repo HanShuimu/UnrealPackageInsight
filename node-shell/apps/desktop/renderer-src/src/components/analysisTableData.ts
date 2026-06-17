@@ -52,8 +52,16 @@ export function buildColumns(rows: unknown[]): ColumnsType<TableRecord> {
 }
 
 export function buildDataSource(rows: unknown[]): TableRecord[] {
-  return rows.map((row, index) => ({
-    ...normalizeRow(row),
-    [ROW_KEY_FIELD]: rowKey(row, index),
-  }));
+  const seenKeys = new Set<string>();
+
+  return rows.map((row, index) => {
+    const baseKey = rowKey(row, index);
+    const uniqueKey = seenKeys.has(baseKey) ? `${baseKey}::${index}` : baseKey;
+    seenKeys.add(baseKey);
+
+    return {
+      ...normalizeRow(row),
+      [ROW_KEY_FIELD]: uniqueKey,
+    };
+  });
 }
