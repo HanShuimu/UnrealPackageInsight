@@ -162,6 +162,7 @@ test('defaultSmokeCheck loads the backend with a temporary build-time DLL search
   const calls = [];
   const pathsDuringSmoke = [];
   const logs = [];
+  const smokeResult = { ok: true, backendInfo: { protocolVersion: 1 } };
 
   const result = defaultSmokeCheck({
     dllPath,
@@ -175,11 +176,11 @@ test('defaultSmokeCheck loads the backend with a temporary build-time DLL search
       calls.push(args);
       pathsDuringSmoke.push(env.PATH);
       args.log('smoked');
-      return { ok: true };
+      return smokeResult;
     },
   });
 
-  assert.deepEqual(result, { ok: true });
+  assert.equal(result, smokeResult);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].dllPath, dllPath);
   assert.equal(calls[0].koffi, koffiModule);
@@ -189,6 +190,27 @@ test('defaultSmokeCheck loads the backend with a temporary build-time DLL search
   assert.equal(smokePathParts[0], path.win32.dirname(dllPath));
   assert.equal(smokePathParts[1], path.win32.join(engineRoot, 'Engine', 'Binaries', 'Win64'));
   assert.equal(smokePathParts[2], 'C:\\Existing\\Bin');
+});
+
+test('defaultSmokeCheck rejects mismatched backend protocol and restores PATH', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-smoke-protocol-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const engineRoot = path.join(root, 'engine');
+  const dllPath = path.join(root, 'native', 'UnrealPackageInsightBackend.dll');
+  fs.mkdirSync(path.dirname(dllPath), { recursive: true });
+  fs.writeFileSync(dllPath, '');
+  const env = { PATH: 'C:\\Existing\\Bin' };
+
+  assert.throws(() => defaultSmokeCheck({
+    dllPath,
+    engineRoot,
+    koffiModule: {},
+    env,
+    smokeRunner() {
+      return { backendInfo: { protocolVersion: 2 } };
+    },
+  }), /Backend protocol version 2 does not match expected 1/);
+  assert.equal(env.PATH, 'C:\\Existing\\Bin');
 });
 
 test('defaultRunBuild invokes Build.bat through cmd.exe and returns the built DLL', (t) => {

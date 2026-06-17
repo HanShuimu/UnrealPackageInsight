@@ -191,7 +191,12 @@ function defaultSmokeCheck({
     existingPath: originalPath || '',
   });
   try {
-    return smokeRunner({ dllPath, koffi: koffiModule, log });
+    const result = smokeRunner({ dllPath, koffi: koffiModule, log });
+    const protocolVersion = result?.backendInfo?.protocolVersion;
+    if (protocolVersion !== PROTOCOL_VERSION) {
+      throw new Error(`Backend protocol version ${protocolVersion} does not match expected ${PROTOCOL_VERSION}`);
+    }
+    return result;
   } finally {
     if (hadPath) {
       env.PATH = originalPath;
