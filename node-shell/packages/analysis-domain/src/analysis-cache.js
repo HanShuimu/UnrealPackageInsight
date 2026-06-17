@@ -13,6 +13,7 @@ class AnalysisCache {
   makeKey(parts) {
     return [
       parts.analysisType,
+      parts.backendId || 'legacy',
       (parts.paths || []).join('|').toLowerCase(),
       parts.fileStamp,
       aesKeyFingerprint(parts.aesKey),

@@ -229,3 +229,69 @@ test('detects AES-required issue codes by exact suffix', () => {
   assert.equal(hasAesRequiredIssue({ issues: [{ code: 'pak_aes_key_required' }] }), false);
   assert.equal(hasAesRequiredIssue({ status: 'OK' }), false);
 });
+
+test('resolves backend by selected Pak file and includes backend id in cache key', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-analysis-service-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const pakPath = path.join(root, 'pakchunk0-Windows.pak');
+  createFile(pakPath, 'pak');
+  const calls = [];
+  const service = new AnalysisService({
+    backendClientProvider: {
+      async resolveForFile(filePath) {
+        assert.equal(filePath, pakPath);
+        return {
+          backendId: 'ue-5.7.4-win32-x64-development',
+          client: {
+            async analyzePak(request) {
+              calls.push(request);
+              return { status: 'OK', backendId: 'ue-5.7.4-win32-x64-development' };
+            },
+          },
+        };
+      },
+    },
+    filePaths: [pakPath],
+  });
+
+  const first = await service.analyze(pakPath);
+  const second = await service.analyze(pakPath);
+
+  assert.equal(first, second);
+  assert.deepEqual(calls, [{ pakPath, aesKey: '' }]);
+});
+
+test('does not reuse cached Pak results across different backend ids', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-analysis-service-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const pakPath = path.join(root, 'pakchunk0-Windows.pak');
+  createFile(pakPath, 'pak');
+  const calls = [];
+  const backendIds = ['ue-5.7.4-win32-x64-development', 'ue-5.7.4-win32-x64-shipping'];
+  const service = new AnalysisService({
+    backendClientProvider: {
+      async resolveForFile() {
+        const backendId = backendIds[calls.length];
+        return {
+          backendId,
+          client: {
+            async analyzePak(request) {
+              calls.push({ backendId, request });
+              return { status: 'OK', backendId };
+            },
+          },
+        };
+      },
+    },
+    filePaths: [pakPath],
+  });
+
+  const first = await service.analyze(pakPath);
+  const second = await service.analyze(pakPath);
+
+  assert.notEqual(first, second);
+  assert.deepEqual(calls, [
+    { backendId: 'ue-5.7.4-win32-x64-development', request: { pakPath, aesKey: '' } },
+    { backendId: 'ue-5.7.4-win32-x64-shipping', request: { pakPath, aesKey: '' } },
+  ]);
+});
