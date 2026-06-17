@@ -6,6 +6,7 @@ const test = require('node:test');
 
 const {
   buildFlatcCommands,
+  getProtocolOutputPaths,
   getTypescriptCompiler,
   normalizeLineEndings,
   parseArgs,
@@ -30,6 +31,28 @@ test('parseArgs rejects unexpected args', () => {
 test('parseArgs rejects missing flatc values', () => {
   assert.throws(() => parseArgs(['--flatc']), /Missing value for --flatc/);
   assert.throws(() => parseArgs(['--flatc', '--allow-different-flatc-version']), /Missing value for --flatc/);
+});
+
+test('getProtocolOutputPaths routes C++ to the Unreal Program and JS/TS to the Node protocol package', () => {
+  const repoRoot = path.join(path.sep, 'repo', 'UnrealPackageInsight');
+
+  assert.deepEqual(getProtocolOutputPaths(repoRoot), {
+    repoRoot,
+    nodeShellDir: path.join(repoRoot, 'node-shell'),
+    protocolDir: path.join(repoRoot, 'node-shell', 'packages', 'protocol'),
+    cppOut: path.join(
+      repoRoot,
+      'ue-backend',
+      'UnrealPackageInsightBackend',
+      'Source',
+      'UnrealPackageInsightBackend',
+      'Generated',
+      'Protocol',
+    ),
+    tsOut: path.join(repoRoot, 'node-shell', 'packages', 'protocol', 'generated', 'ts'),
+    jsOut: path.join(repoRoot, 'node-shell', 'packages', 'protocol', 'generated', 'js'),
+    nodeGeneratedDir: path.join(repoRoot, 'node-shell', 'packages', 'protocol', 'generated'),
+  });
 });
 
 test('buildFlatcCommands builds cpp and ts commands with common schema first', () => {
@@ -76,6 +99,23 @@ test('buildFlatcCommands builds cpp and ts commands with common schema first', (
       ],
     },
   ]);
+
+  const repoRoot = path.join(path.sep, 'repo', 'UnrealPackageInsight');
+  const outputs = getProtocolOutputPaths(repoRoot);
+  const routedCommands = buildFlatcCommands({
+    flatc: 'flatc-bin',
+    protocolDir: outputs.protocolDir,
+    cppOut: outputs.cppOut,
+    tsOut: outputs.tsOut,
+  });
+  assert.equal(
+    routedCommands[0].args[routedCommands[0].args.indexOf('-o') + 1],
+    outputs.cppOut,
+  );
+  assert.equal(
+    routedCommands[1].args[routedCommands[1].args.indexOf('-o') + 1],
+    outputs.tsOut,
+  );
 });
 
 test('setGeneratedTypescriptBarrel writes explicit barrel exports', () => {

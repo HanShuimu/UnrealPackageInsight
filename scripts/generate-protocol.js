@@ -55,6 +55,29 @@ function repoRootFromScript() {
   return path.resolve(__dirname, '..');
 }
 
+function getProtocolOutputPaths(repoRoot = repoRootFromScript()) {
+  const nodeShellDir = path.join(repoRoot, 'node-shell');
+  const protocolDir = path.join(nodeShellDir, 'packages', 'protocol');
+  const nodeGeneratedDir = path.join(protocolDir, 'generated');
+  return {
+    repoRoot,
+    nodeShellDir,
+    protocolDir,
+    cppOut: path.join(
+      repoRoot,
+      'ue-backend',
+      'UnrealPackageInsightBackend',
+      'Source',
+      'UnrealPackageInsightBackend',
+      'Generated',
+      'Protocol',
+    ),
+    tsOut: path.join(nodeGeneratedDir, 'ts'),
+    jsOut: path.join(nodeGeneratedDir, 'js'),
+    nodeGeneratedDir,
+  };
+}
+
 function ensureEmptyDirectory(directory) {
   fs.rmSync(directory, { recursive: true, force: true });
   fs.mkdirSync(directory, { recursive: true });
@@ -162,13 +185,7 @@ function getTypescriptCompiler(nodeShellDir, platform = process.platform) {
 
 function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
-  const repoRoot = repoRootFromScript();
-  const nodeShellDir = path.join(repoRoot, 'node-shell');
-  const protocolDir = path.join(nodeShellDir, 'packages', 'protocol');
-  const cppOut = path.join(protocolDir, 'generated', 'cpp');
-  const tsOut = path.join(protocolDir, 'generated', 'ts');
-  const jsOut = path.join(protocolDir, 'generated', 'js');
-  const generatedDir = path.join(protocolDir, 'generated');
+  const paths = getProtocolOutputPaths();
   const flatc = args.flatc || process.env.UPI_FLATC || 'flatc';
 
   const flatcVersion = getFlatcVersion(flatc);
@@ -176,13 +193,18 @@ function main(argv = process.argv.slice(2)) {
     throw new Error(`flatc version ${flatcVersion} is not supported. Expected ${REQUIRED_FLATC_VERSION}. Use --allow-different-flatc-version to override intentionally.`);
   }
 
-  const tsc = getTypescriptCompiler(nodeShellDir);
+  const tsc = getTypescriptCompiler(paths.nodeShellDir);
 
-  for (const outDir of [cppOut, tsOut, jsOut]) {
+  for (const outDir of [paths.cppOut, paths.tsOut, paths.jsOut]) {
     ensureEmptyDirectory(outDir);
   }
 
-  for (const command of buildFlatcCommands({ flatc, protocolDir, cppOut, tsOut })) {
+  for (const command of buildFlatcCommands({
+    flatc,
+    protocolDir: paths.protocolDir,
+    cppOut: paths.cppOut,
+    tsOut: paths.tsOut,
+  })) {
     try {
       execFileSync(command.executable, command.args, { stdio: 'inherit' });
     } catch (error) {
@@ -190,11 +212,11 @@ function main(argv = process.argv.slice(2)) {
     }
   }
 
-  setGeneratedTypescriptBarrel(path.join(tsOut, 'upi', 'v1.ts'));
+  setGeneratedTypescriptBarrel(path.join(paths.tsOut, 'upi', 'v1.ts'));
 
-  const tsFiles = collectFiles(tsOut, (filePath) => filePath.endsWith('.ts'));
+  const tsFiles = collectFiles(paths.tsOut, (filePath) => filePath.endsWith('.ts'));
   if (tsFiles.length === 0) {
-    throw new Error(`flatc TypeScript generation produced no .ts files in ${tsOut}.`);
+    throw new Error(`flatc TypeScript generation produced no .ts files in ${paths.tsOut}.`);
   }
 
   const tscArgs = [
@@ -205,9 +227,9 @@ function main(argv = process.argv.slice(2)) {
     '--moduleResolution',
     'node',
     '--rootDir',
-    tsOut,
+    paths.tsOut,
     '--outDir',
-    jsOut,
+    paths.jsOut,
     '--skipLibCheck',
     '--noEmitOnError',
     ...tsFiles,
@@ -222,14 +244,16 @@ function main(argv = process.argv.slice(2)) {
     throw new Error('TypeScript compilation failed for generated protocol bindings.');
   }
 
-  normalizeLineEndings(generatedDir);
+  normalizeLineEndings(paths.cppOut);
+  normalizeLineEndings(paths.nodeGeneratedDir);
 
-  console.log(`[OK] Generated FlatBuffers bindings in ${generatedDir}`);
+  console.log(`[OK] Generated FlatBuffers bindings in ${paths.nodeGeneratedDir} and ${paths.cppOut}`);
 }
 
 module.exports = {
   REQUIRED_FLATC_VERSION,
   buildFlatcCommands,
+  getProtocolOutputPaths,
   getTypescriptCompiler,
   main,
   normalizeLineEndings,
