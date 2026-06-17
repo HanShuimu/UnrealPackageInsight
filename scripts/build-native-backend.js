@@ -142,14 +142,24 @@ function findBuiltDll(engineRoot) {
   return dlls[0].filePath;
 }
 
-function defaultRunBuild({ engineRoot, configuration }) {
+function runBatchFile(command, args, execFile = execFileSync) {
+  execFile('cmd.exe', [
+    '/d',
+    '/s',
+    '/c',
+    `"${command}"`,
+    ...args,
+  ], { stdio: 'inherit' });
+}
+
+function defaultRunBuild({ engineRoot, configuration, execFile = execFileSync }) {
   const buildBat = path.join(engineRoot, 'Engine', 'Build', 'BatchFiles', 'Build.bat');
-  execFileSync(buildBat, [
+  runBatchFile(buildBat, [
     'UnrealPackageInsightBackend',
     DEFAULT_UNREAL_PLATFORM,
     configuration,
     '-WaitMutex',
-  ], { stdio: 'inherit' });
+  ], execFile);
   return findBuiltDll(engineRoot);
 }
 
@@ -201,6 +211,9 @@ function buildNativeBackends({
     throw new Error(`Backend source directory missing: ${sourceDir}`);
   }
   const engineVersion = readEngineVersion(engineRoot);
+  if (!fs.existsSync(buildBat) || !fs.statSync(buildBat).isFile()) {
+    throw new Error(`Build.bat missing or not a file: ${buildBat}`);
+  }
   fs.accessSync(buildBat, fs.constants.R_OK);
   const buildConfigurations = resolveConfigurations({ configuration });
   copyDirectory(sourceDir, destinationDir);
@@ -279,4 +292,5 @@ module.exports = {
   removeDirectory,
   repoRootFromScript,
   resolveConfigurations,
+  runBatchFile,
 };

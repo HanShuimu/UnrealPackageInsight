@@ -8,6 +8,7 @@ const {
   ALL_CONFIGURATIONS,
   buildNativeBackends,
   createBackendManifest,
+  defaultRunBuild,
   defaultSmokeCheck,
   ensureDirectory,
   findBuiltDll,
@@ -187,6 +188,63 @@ test('defaultSmokeCheck loads the backend with a temporary build-time DLL search
   assert.equal(smokePathParts[0], path.win32.dirname(dllPath));
   assert.equal(smokePathParts[1], path.win32.join(engineRoot, 'Engine', 'Binaries', 'Win64'));
   assert.equal(smokePathParts[2], 'C:\\Existing\\Bin');
+});
+
+test('defaultRunBuild invokes Build.bat through cmd.exe and returns the built DLL', (t) => {
+  const engineRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-run-build-'));
+  t.after(() => fs.rmSync(engineRoot, { recursive: true, force: true }));
+  const buildBat = path.join(engineRoot, 'Engine', 'Build', 'BatchFiles', 'Build.bat');
+  fs.mkdirSync(path.dirname(buildBat), { recursive: true });
+  fs.writeFileSync(buildBat, '');
+  const dllPath = path.join(engineRoot, 'Engine', 'Binaries', 'Win64', 'UnrealPackageInsightBackend', 'UnrealPackageInsightBackend.dll');
+  const execCalls = [];
+
+  const result = defaultRunBuild({
+    engineRoot,
+    configuration: 'Development',
+    execFile(command, args, options) {
+      execCalls.push({ command, args, options });
+      fs.mkdirSync(path.dirname(dllPath), { recursive: true });
+      fs.writeFileSync(dllPath, '');
+    },
+  });
+
+  assert.equal(result, dllPath);
+  assert.equal(execCalls.length, 1);
+  assert.equal(execCalls[0].command, 'cmd.exe');
+  assert.deepEqual(execCalls[0].args, [
+    '/d',
+    '/s',
+    '/c',
+    `"${buildBat}"`,
+    'UnrealPackageInsightBackend',
+    'Win64',
+    'Development',
+    '-WaitMutex',
+  ]);
+  assert.deepEqual(execCalls[0].options, { stdio: 'inherit' });
+});
+
+test('buildNativeBackends preserves existing staged source when Build.bat is not a file', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-build-bat-guard-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const repoRoot = path.join(root, 'repo');
+  const engineRoot = path.join(root, 'engine');
+  const sourceDir = path.join(repoRoot, 'ue-backend', 'UnrealPackageInsightBackend');
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.writeFileSync(path.join(sourceDir, 'UnrealPackageInsightBackend.Target.cs'), 'target');
+  const destinationDir = path.join(engineRoot, 'Engine', 'Source', 'Programs', 'UnrealPackageInsightBackend');
+  const markerPath = path.join(destinationDir, 'keep.marker');
+  fs.mkdirSync(destinationDir, { recursive: true });
+  fs.writeFileSync(markerPath, 'existing');
+  const versionPath = path.join(engineRoot, 'Engine', 'Build', 'Build.version');
+  fs.mkdirSync(path.dirname(versionPath), { recursive: true });
+  fs.writeFileSync(versionPath, JSON.stringify({ MajorVersion: 5, MinorVersion: 7, PatchVersion: 4 }));
+  const buildBat = path.join(engineRoot, 'Engine', 'Build', 'BatchFiles', 'Build.bat');
+  fs.mkdirSync(buildBat, { recursive: true });
+
+  assert.throws(() => buildNativeBackends({ repoRoot, engineRoot }), /Build\.bat/);
+  assert.equal(fs.existsSync(markerPath), true);
 });
 
 test('buildNativeBackends stages and builds all configurations by default', (t) => {
