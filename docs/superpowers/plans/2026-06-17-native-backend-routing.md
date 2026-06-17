@@ -4,7 +4,7 @@
 
 **Goal:** Make GUI and CLI choose staged Unreal backend DLLs from container probes and generated manifests, with JS-only build scripts and documented C++ backend rebuild workflow.
 
-**Architecture:** Add a shared backend routing core under `node-shell/packages/backend-core/src`: manifest registry, container probe, selector, and backend client provider. GUI and CLI call that same core at analysis time; build-time staging is handled by root npm scripts that call `scripts/build-native-backend.js`.
+**Architecture:** Keep container format knowledge in `analysis-domain` and native backend mechanics in `backend-core`. GUI and CLI compose the analysis-domain probe with backend-core manifest registry, selector, and client provider at analysis time; build-time staging is handled by root npm scripts that call `scripts/build-native-backend.js`.
 
 **Tech Stack:** Node.js CommonJS, Node built-in `node:test`, Electron IPC, Koffi, FlatBuffers code generation, Unreal Build Tool invoked from Node via `child_process`.
 
@@ -22,7 +22,7 @@ The approved spec covers runtime routing, JavaScript build tooling, GUI/CLI inte
 - Delete `scripts/stage-ue-backend.ps1`, `scripts/build-ue-backend.ps1`, `scripts/generate-protocol.ps1`.
 - Modify `node-shell/package.json`: route `generate-protocol` through the JS script and keep app/test commands.
 - Create `node-shell/packages/backend-core/src/backend-registry.js`: scan and validate native backend manifests.
-- Create `node-shell/packages/backend-core/src/container-probe.js`: probe Pak footer and UTOC header metadata.
+- Create `node-shell/packages/analysis-domain/src/container-probe.js`: probe Pak footer and UTOC header metadata.
 - Create `node-shell/packages/backend-core/src/backend-selector.js`: choose compatible manifests from probe metadata.
 - Create `node-shell/packages/backend-core/src/backend-client-provider.js`: lazily create and cache backend clients by backend id.
 - Modify `node-shell/packages/analysis-domain/src/analysis-service.js`: request backend clients at analysis time and include backend id in result cache keys.
@@ -925,12 +925,12 @@ git commit -m "Add backend manifest registry and selector"
 ## Task 5: Container Probe
 
 **Files:**
-- Create: `node-shell/packages/backend-core/src/container-probe.js`
-- Test: `node-shell/packages/backend-core/test/container-probe.test.js`
+- Create: `node-shell/packages/analysis-domain/src/container-probe.js`
+- Test: `node-shell/packages/analysis-domain/test/container-probe.test.js`
 
 - [ ] **Step 1: Write failing probe tests**
 
-Create `node-shell/packages/backend-core/test/container-probe.test.js`:
+Create `node-shell/packages/analysis-domain/test/container-probe.test.js`:
 
 ```js
 const assert = require('node:assert/strict');
@@ -992,14 +992,14 @@ Run:
 
 ```powershell
 Set-Location C:\WORKSPACE_UE\UnrealPackageInsight\node-shell
-npm.cmd test -- packages/backend-core/test/container-probe.test.js
+npm.cmd test -- packages/analysis-domain/test/container-probe.test.js
 ```
 
 Expected: FAIL because module does not exist.
 
 - [ ] **Step 3: Implement minimal probe module**
 
-Create `node-shell/packages/backend-core/src/container-probe.js`:
+Create `node-shell/packages/analysis-domain/src/container-probe.js`:
 
 ```js
 const fs = require('node:fs');
@@ -1098,7 +1098,7 @@ Run:
 
 ```powershell
 Set-Location C:\WORKSPACE_UE\UnrealPackageInsight\node-shell
-npm.cmd test -- packages/backend-core/test/container-probe.test.js
+npm.cmd test -- packages/analysis-domain/test/container-probe.test.js
 ```
 
 Expected: PASS.
@@ -1106,7 +1106,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add node-shell/packages/backend-core/src/container-probe.js node-shell/packages/backend-core/test/container-probe.test.js
+git add node-shell/packages/analysis-domain/src/container-probe.js node-shell/packages/analysis-domain/test/container-probe.test.js
 git commit -m "Add JavaScript container probe"
 ```
 
@@ -1138,6 +1138,9 @@ test('provider creates and caches clients by backend id', () => {
     backendClientFactory({ dllPath }) {
       created.push(dllPath);
       return { dllPath };
+    },
+    probeContainerFile() {
+      return { containerType: 'pak', pakFormatVersion: 12 };
     },
   });
 
@@ -1226,16 +1229,18 @@ Create `node-shell/packages/backend-core/src/backend-client-provider.js`:
 
 ```js
 const { createBackendClient } = require('./backend-client.js');
-const { probeContainerFile: defaultProbeContainerFile } = require('./container-probe.js');
 const { selectBackendCandidates } = require('./backend-selector.js');
 
 function createBackendClientProvider({
   manifests,
   koffi,
   backendClientFactory = createBackendClient,
-  probeContainerFile = defaultProbeContainerFile,
+  probeContainerFile,
   selectionStore = new Map(),
 }) {
+  if (typeof probeContainerFile !== 'function') {
+    throw new Error('backend provider requires a probeContainerFile function');
+  }
   const byId = new Map(manifests.map((manifest) => [manifest.id, manifest]));
   const clients = new Map();
   return {
@@ -1532,6 +1537,12 @@ Remove `koffi`, `DEFAULT_ENGINE_ROOT`, `buildDllSearchPath`, `resolveDllPath`, a
 
 In `node-shell/apps/desktop/main.js`, replace eager backend initialization with registry/provider creation. The state factory should accept:
 
+Import the probe from analysis-domain:
+
+```js
+const { probeContainerFile } = require('../../packages/analysis-domain/src/container-probe.js');
+```
+
 ```js
 function createDesktopState({
   backendClientProvider = null,
@@ -1595,6 +1606,7 @@ function initializeBackendRouting({
   state = desktopState,
   koffiModule = koffi,
   loadBackendManifestsFn = loadBackendManifests,
+  probeContainerFileFn = probeContainerFile,
   summarizeBackendsFn = summarizeBackends,
   providerFactory = createBackendClientProvider,
 } = {}) {
@@ -1603,6 +1615,7 @@ function initializeBackendRouting({
   state.backendClientProvider = providerFactory({
     manifests,
     koffi: koffiModule,
+    probeContainerFile: probeContainerFileFn,
     selectionStore: state.backendSelections,
   });
   return state.backendClientProvider;
@@ -1827,8 +1840,8 @@ const koffi = require('koffi');
 
 const { loadBackendManifests, manifestLabel } = require('../packages/backend-core/src/backend-registry.js');
 const { createBackendClientProvider } = require('../packages/backend-core/src/backend-client-provider.js');
-const { probeContainerFile } = require('../packages/backend-core/src/container-probe.js');
 const { selectBackendCandidates } = require('../packages/backend-core/src/backend-selector.js');
+const { probeContainerFile } = require('../packages/analysis-domain/src/container-probe.js');
 
 function parseCli(argv) {
   const args = argv.slice(2);
@@ -1894,7 +1907,11 @@ async function main({
       processController.exitCode = 1;
       return;
     }
-    const provider = providerFactory({ manifests: candidates, koffi: koffiModule });
+    const provider = providerFactory({
+      manifests: candidates,
+      koffi: koffiModule,
+      probeContainerFile: probe,
+    });
     const client = provider.getBackendClient(selected.id);
     if (probeResult.containerType === 'pak') {
       log(JSON.stringify(await client.analyzePak({ pakPath: args.filePath, aesKey: '' }), null, 2));
