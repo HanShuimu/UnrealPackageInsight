@@ -1,5 +1,5 @@
 import { Button, Layout, Spin, Typography } from 'antd';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState, type RefCallback } from 'react';
 import { AesKeyDialog } from './components/AesKeyDialog';
 import { AnalysisTabs } from './components/AnalysisTabs';
 import { BackendChooserDialog } from './components/BackendChooserDialog';
@@ -9,30 +9,52 @@ import type { BackendInfo } from './types/upi';
 
 const { Content, Header, Sider } = Layout;
 
-const TOOLBAR_HEIGHT = 48;
-const TREE_CHROME_HEIGHT = 52;
-const ANALYSIS_CHROME_HEIGHT = 104;
-const DEFAULT_VIEWPORT_HEIGHT = 720;
-const MIN_TREE_HEIGHT = 240;
-const MIN_TABLE_HEIGHT = 280;
-
-function viewportHeight(): number {
-  return typeof window === 'undefined' ? DEFAULT_VIEWPORT_HEIGHT : window.innerHeight;
+function normalizeMeasuredHeight(height: number): number {
+  return Math.max(0, Math.floor(height));
 }
 
-function useViewportHeight(): number {
-  const [height, setHeight] = useState(viewportHeight);
+function readElementHeight(element: HTMLElement): number {
+  return element.getBoundingClientRect().height || element.clientHeight || 0;
+}
 
-  useEffect(() => {
-    const handleResize = () => setHeight(viewportHeight());
+function useMeasuredHeight<T extends HTMLElement>(): [RefCallback<T>, number] {
+  const [element, setElement] = useState<T | null>(null);
+  const [height, setHeight] = useState(0);
 
-    handleResize();
-    window.addEventListener('resize', handleResize);
-
-    return () => window.removeEventListener('resize', handleResize);
+  const ref = useCallback((nextElement: T | null) => {
+    setElement(nextElement);
   }, []);
 
-  return height;
+  useEffect(() => {
+    if (!element) {
+      setHeight(0);
+      return undefined;
+    }
+
+    const updateHeight = (nextHeight: number) => {
+      const measuredHeight = normalizeMeasuredHeight(nextHeight);
+      setHeight((currentHeight) => (
+        currentHeight === measuredHeight ? currentHeight : measuredHeight
+      ));
+    };
+
+    updateHeight(readElementHeight(element));
+
+    if (typeof ResizeObserver === 'undefined') {
+      return undefined;
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      updateHeight(entry?.contentRect.height ?? readElementHeight(element));
+    });
+
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, [element]);
+
+  return [ref, height];
 }
 
 function backendLabel(backendInfo: BackendInfo | null): string {
@@ -63,17 +85,14 @@ export default function App() {
   const cancelAesDialog = useAppStore((state) => state.cancelAesDialog);
   const chooseBackend = useAppStore((state) => state.chooseBackend);
   const cancelBackendDialog = useAppStore((state) => state.cancelBackendDialog);
-  const height = useViewportHeight();
+  const [treeContentRef, treeHeight] = useMeasuredHeight<HTMLDivElement>();
+  const [analysisTabsRegionRef, tableHeight] = useMeasuredHeight<HTMLDivElement>();
 
   useEffect(() => {
     void loadBackendInfo();
   }, [loadBackendInfo]);
 
-  const layoutHeights = useMemo(() => ({
-    tableHeight: Math.max(MIN_TABLE_HEIGHT, height - ANALYSIS_CHROME_HEIGHT),
-    treeHeight: Math.max(MIN_TREE_HEIGHT, height - TOOLBAR_HEIGHT - TREE_CHROME_HEIGHT),
-  }), [height]);
-
+  const backendText = backendLabel(backendInfo);
   const selectedLabel = selectedFilePath || 'None';
   const shellBusy = isOpeningDirectory || isAnalyzing;
 
@@ -95,12 +114,24 @@ export default function App() {
         <div className="toolbar-status" aria-live="polite">
           <span className="status-item">
             <Typography.Text className="status-label">Status</Typography.Text>
-            <Typography.Text strong>{statusText}</Typography.Text>
+            <Typography.Text
+              aria-label={`Status: ${statusText}`}
+              className="status-value"
+              strong
+              title={statusText}
+            >
+              {statusText}
+            </Typography.Text>
           </span>
           <span className="status-item">
             <Typography.Text className="status-label">Backend</Typography.Text>
-            <Typography.Text ellipsis title={backendLabel(backendInfo)}>
-              {backendLabel(backendInfo)}
+            <Typography.Text
+              aria-label={`Backend: ${backendText}`}
+              className="status-value"
+              ellipsis
+              title={backendText}
+            >
+              {backendText}
             </Typography.Text>
           </span>
         </div>
@@ -113,9 +144,9 @@ export default function App() {
               <Typography.Text strong>Packages</Typography.Text>
               <Spin spinning={isOpeningDirectory} size="small" />
             </div>
-            <div className="tree-content">
+            <div className="tree-content" ref={treeContentRef}>
               <PackageTree
-                height={layoutHeights.treeHeight}
+                height={treeHeight}
                 scan={scan}
                 selectedFilePath={selectedFilePath}
                 onSelectFile={(filePath) => void analyzeFile(filePath)}
@@ -128,15 +159,21 @@ export default function App() {
           <section className="analysis-header" aria-label="Analysis status">
             <div className="analysis-title">
               <Typography.Text className="status-label">Selected</Typography.Text>
-              <Typography.Text ellipsis strong title={selectedLabel}>
+              <Typography.Text
+                aria-label={`Selected file: ${selectedLabel}`}
+                className="selected-value"
+                ellipsis
+                strong
+                title={selectedLabel}
+              >
                 {selectedLabel}
               </Typography.Text>
             </div>
             <Spin spinning={shellBusy} size="small" />
           </section>
           <Spin classNames={{ root: 'analysis-spinner' }} spinning={shellBusy}>
-            <div className="analysis-tabs-region">
-              <AnalysisTabs result={analysisResult} tableHeight={layoutHeights.tableHeight} />
+            <div className="analysis-tabs-region" ref={analysisTabsRegionRef}>
+              <AnalysisTabs result={analysisResult} tableHeight={tableHeight} />
             </div>
           </Spin>
         </Content>

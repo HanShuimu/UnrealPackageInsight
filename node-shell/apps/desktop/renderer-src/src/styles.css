@@ -41,7 +41,10 @@ body {
 }
 
 .toolbar-status {
+  flex: 1 1 auto;
   gap: 18px;
+  justify-content: flex-end;
+  min-width: 0;
   max-width: 62vw;
 }
 
@@ -55,9 +58,15 @@ body {
 .status-item {
   display: flex;
   align-items: baseline;
-  min-width: 0;
+  flex: 1 1 0;
   gap: 6px;
+  min-width: 0;
+  max-width: 360px;
   white-space: nowrap;
+}
+
+.toolbar-status .status-item:first-child {
+  max-width: 280px;
 }
 
 .status-label.ant-typography {
@@ -65,6 +74,15 @@ body {
   color: #667085;
   font-size: 12px;
   font-weight: 500;
+}
+
+.status-value.ant-typography,
+.selected-value.ant-typography {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .shell-body {
@@ -125,8 +143,10 @@ body {
 .analysis-title {
   display: flex;
   align-items: baseline;
+  flex: 1 1 auto;
   min-width: 0;
   gap: 8px;
+  overflow: hidden;
 }
 
 .analysis-spinner,
