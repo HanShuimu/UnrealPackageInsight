@@ -108,6 +108,16 @@ test('exports orchestration helper functions used by the build script', () => {
   assert.equal(typeof repoRootFromScript, 'function');
 });
 
+test('required generated protocol headers match FlatBuffers schemas', () => {
+  const protocolSchemaDir = path.join(repoRootFromScript(), 'node-shell', 'packages', 'protocol');
+  const expectedHeaders = fs.readdirSync(protocolSchemaDir)
+    .filter((fileName) => fileName.endsWith('.fbs'))
+    .map((fileName) => fileName.replace(/\.fbs$/, '_generated.h'))
+    .sort();
+
+  assert.deepEqual([...REQUIRED_GENERATED_PROTOCOL_HEADERS].sort(), expectedHeaders);
+});
+
 test('getProgramGeneratedProtocolDir points at Program-local generated headers', () => {
   assert.equal(
     getProgramGeneratedProtocolDir('C:\\repo\\UnrealPackageInsight'),
