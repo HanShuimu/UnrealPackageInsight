@@ -1,0 +1,14 @@
+{
+  "name": "unreal-package-insight",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "build": "node scripts/build-native-backend.js",
+    "build:native": "node scripts/build-native-backend.js",
+    "build:native:debug": "node scripts/build-native-backend.js --configuration Debug",
+    "build:native:development": "node scripts/build-native-backend.js --configuration Development",
+    "build:native:shipping": "node scripts/build-native-backend.js --configuration Shipping",
+    "test": "npm --prefix node-shell test"
+  }
+}
