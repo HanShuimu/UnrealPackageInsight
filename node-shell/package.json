@@ -7,7 +7,7 @@
   "scripts": {
     "test": "node --test \"test/*.test.js\" \"packages/protocol/test/*.test.js\" \"packages/backend-core/test/*.test.js\" \"packages/analysis-domain/test/*.test.js\" \"apps/desktop/test/*.test.js\"",
     "call-backend": "node src/index.js",
-    "generate-protocol": "powershell -ExecutionPolicy Bypass -File ../scripts/generate-protocol.ps1",
+    "generate-protocol": "node ../scripts/generate-protocol.js",
     "gui": "node bin/upi-gui.js",
     "cli": "node bin/upi-cli.js"
   },
