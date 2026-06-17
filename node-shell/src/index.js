@@ -1,3 +1,6 @@
+const fs = require('node:fs');
+const path = require('node:path');
+
 const koffi = require('koffi');
 
 const {
@@ -13,6 +16,10 @@ const {
 const {
   probeContainerFile: defaultProbeContainerFile,
 } = require('../packages/analysis-domain/src/container-probe.js');
+const {
+  getContainerKind,
+  resolveIoStoreSelection,
+} = require('../packages/analysis-domain/src/container-pairing.js');
 
 function parseCli(argv = process.argv) {
   const args = argv.slice(2);
@@ -80,6 +87,44 @@ function logCompatibleCandidates({ log, candidates }) {
   }
 }
 
+function defaultListContainerFiles(filePath) {
+  const directory = path.win32.dirname(filePath);
+  return fs.readdirSync(directory, { withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => path.win32.join(directory, entry.name))
+    .filter((candidatePath) => getContainerKind(candidatePath) !== 'unsupported');
+}
+
+function resolveAnalysisTarget({ filePath, filePaths, listContainerFiles }) {
+  const kind = getContainerKind(filePath);
+  if (kind === 'pak') {
+    return {
+      kind,
+      probePath: filePath,
+      pakPath: filePath,
+    };
+  }
+
+  if (kind === 'utoc' || kind === 'ucas') {
+    const availablePaths = filePaths || listContainerFiles(filePath);
+    const selection = resolveIoStoreSelection(filePath, availablePaths);
+    if (!selection?.ok) {
+      throw new Error(selection?.issue?.message || 'Selected IoStore file is missing its matching .utoc or .ucas file.');
+    }
+    return {
+      kind: 'iostore',
+      probePath: selection.utocPath,
+      utocPath: selection.utocPath,
+      ucasPath: selection.ucasPath,
+    };
+  }
+
+  return {
+    kind,
+    probePath: filePath,
+  };
+}
+
 async function analyzeContainer({
   filePath,
   backendId,
@@ -87,8 +132,11 @@ async function analyzeContainer({
   loadBackendManifests,
   probeContainerFile,
   providerFactory,
+  filePaths,
+  listContainerFiles,
 }) {
-  const probe = probeContainerFile(filePath);
+  const target = resolveAnalysisTarget({ filePath, filePaths, listContainerFiles });
+  const probe = probeContainerFile(target.probePath);
   const manifests = loadBackendManifests();
   const candidates = selectBackendCandidates({ probe, manifests });
 
@@ -111,10 +159,14 @@ async function analyzeContainer({
     koffi,
     probeContainerFile,
   });
-  const client = provider.getBackendClient(selected.id, { filePath });
-  const result = probe.containerType === 'pak'
-    ? await client.analyzePak({ pakPath: filePath, aesKey: '' })
-    : await client.analyzeIoStore({ utocPath: probe.utocPath || filePath, aesKey: '' });
+  const client = provider.getBackendClient(selected.id, { filePath: target.probePath });
+  const result = target.kind === 'pak'
+    ? await client.analyzePak({ pakPath: target.pakPath, aesKey: '' })
+    : await client.analyzeIoStore({
+      utocPath: target.utocPath || probe.utocPath || target.probePath,
+      ucasPath: target.ucasPath,
+      aesKey: '',
+    });
 
   log(jsonStringify(result));
   return 0;
@@ -135,6 +187,10 @@ async function main(options = {}) {
   const providerFactory = Array.isArray(options)
     ? createBackendClientProvider
     : options.providerFactory || createBackendClientProvider;
+  const filePaths = Array.isArray(options) ? undefined : options.filePaths;
+  const listContainerFiles = Array.isArray(options)
+    ? defaultListContainerFiles
+    : options.listContainerFiles || defaultListContainerFiles;
 
   try {
     const parsed = parseCli(argv);
@@ -161,6 +217,8 @@ async function main(options = {}) {
         loadBackendManifests,
         probeContainerFile,
         providerFactory,
+        filePaths,
+        listContainerFiles,
       });
       processController.exitCode = exitCode;
       return exitCode;
