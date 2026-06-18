@@ -17,11 +17,13 @@ test('root build batch installs dependencies and builds native plus renderer thr
   assert.match(script, /if "%ENGINE_ROOT%"=="" goto invalid_engine_root/);
   assert.match(script, /if not exist "%ENGINE_ROOT%\\Engine\\Build\\BatchFiles\\Build\.bat" goto invalid_engine_root/);
   assert.match(script, /Engine root not found or invalid: %ENGINE_ROOT%/);
+  assert.match(script, /:invalid_engine_root[\s\S]*pause[\s\S]*exit \/b 1/);
   assert.match(script, /call npm\.cmd --prefix node-shell install/);
   assert.match(script, /call npm\.cmd --prefix node-shell run generate-protocol/);
   assert.match(script, /call npm\.cmd run build:native -- --engine-root "%ENGINE_ROOT%"/);
   assert.match(script, /--configuration "%BUILD_CONFIGURATION%"/);
   assert.match(script, /call npm\.cmd --prefix node-shell run build:renderer/);
+  assert.match(script, /:fail[\s\S]*Build failed with exit code %UPI_EXIT%\.[\s\S]*pause[\s\S]*exit \/b %UPI_EXIT%/);
 });
 
 test('root GUI batch starts the Electron GUI through the node-shell npm script', () => {

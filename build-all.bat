@@ -37,6 +37,7 @@ exit /b 0
 echo.
 echo Engine root not found or invalid: %ENGINE_ROOT%
 echo Expected Build.bat at: "%ENGINE_ROOT%\Engine\Build\BatchFiles\Build.bat"
+pause
 popd
 exit /b 1
 
@@ -44,5 +45,6 @@ exit /b 1
 set "UPI_EXIT=%ERRORLEVEL%"
 echo.
 echo Build failed with exit code %UPI_EXIT%.
+pause
 popd
 exit /b %UPI_EXIT%
