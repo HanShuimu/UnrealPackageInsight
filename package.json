@@ -15,6 +15,7 @@
     "penpot:mcp:start": "node scripts/penpot-mcp-service.js start",
     "penpot:mcp:status": "node scripts/penpot-mcp-service.js status",
     "penpot:mcp:stop": "node scripts/penpot-mcp-service.js stop",
+    "test:bat": "node --test scripts/test/bat-pause.test.js",
     "test:penpot-mcp": "node --test scripts/test/penpot-mcp-service.test.js",
     "test": "npm --prefix node-shell test"
   }

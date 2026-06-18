@@ -27,6 +27,13 @@ from explicit command-line parameters or configuration files.
 Do not read workflow variables from environment variables. If a value needs to be configurable,
 add a parameter or a configuration file entry instead.
 
+## Batch Files
+
+All Windows batch files committed to the repository must pause before every exit path.
+
+Every `exit /b` path must execute `pause` first, including successful exits, error exits, and
+label-based exits. Do not add a batch file that can close immediately after double-click execution.
+
 ## GUI Changes
 
 Whenever modifying the GUI, including files under `node-shell/apps/desktop/**`,

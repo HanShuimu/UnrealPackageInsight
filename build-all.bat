@@ -43,6 +43,7 @@ if errorlevel 1 goto fail
 
 echo.
 echo Build completed.
+pause
 popd
 exit /b 0
 
