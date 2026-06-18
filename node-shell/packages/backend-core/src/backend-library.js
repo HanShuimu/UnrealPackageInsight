@@ -1,4 +1,11 @@
+const path = require('node:path');
+
 const GET_MODULE_HANDLE_EX_FLAG_PIN = 0x00000001;
+const LOAD_LIBRARY_SEARCH_DEFAULT_DIRS = 0x00001000;
+const SET_DEFAULT_DLL_DIRECTORIES_SIGNATURE =
+  'bool __stdcall SetDefaultDllDirectories(uint32_t DirectoryFlags)';
+const ADD_DLL_DIRECTORY_SIGNATURE =
+  'void* __stdcall AddDllDirectory(const char16_t *NewDirectory)';
 const GET_MODULE_HANDLE_EX_W_SIGNATURE =
   'bool __stdcall GetModuleHandleExW(uint32_t dwFlags, const char16_t *lpModuleName, _Out_ HMODULE *phModule)';
 const hmoduleTypeByKoffi = new WeakMap();
@@ -29,7 +36,27 @@ function pinBackendDllOnWindows({ dllPath, koffi, platform }) {
   void HMODULE;
 }
 
+function registerBackendDllDirectoryOnWindows({ dllPath, koffi, platform }) {
+  if (platform !== 'win32' || !dllPath) {
+    return;
+  }
+
+  const directory = path.win32.dirname(dllPath);
+  const kernel32 = koffi.load('kernel32.dll');
+  const setDefaultDllDirectories = kernel32.func(SET_DEFAULT_DLL_DIRECTORIES_SIGNATURE);
+  if (!setDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS)) {
+    throw new Error('Unable to enable Windows DLL directory search defaults.');
+  }
+
+  const addDllDirectory = kernel32.func(ADD_DLL_DIRECTORY_SIGNATURE);
+  const cookie = addDllDirectory(directory);
+  if (!cookie) {
+    throw new Error(`Unable to register backend DLL directory: ${directory}`);
+  }
+}
+
 function loadBackendLibrary({ dllPath, koffi, platform = process.platform }) {
+  registerBackendDllDirectoryOnWindows({ dllPath, koffi, platform });
   const library = koffi.load(dllPath);
   pinBackendDllOnWindows({ dllPath, koffi, platform });
 

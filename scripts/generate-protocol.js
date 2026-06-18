@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const REQUIRED_FLATC_VERSION = '24.3.25';
+const PROTOCOL_TOOLS_CONFIG = path.join('tools', 'protocol-tools.json');
 const SCHEMAS = [
   'upi_common.fbs',
   'upi_backend_info.fbs',
@@ -42,6 +43,15 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
+    if (arg === '--tools-config') {
+      const toolsConfig = argv[index + 1];
+      if (!toolsConfig || toolsConfig.startsWith('--')) {
+        throw new Error('Missing value for --tools-config');
+      }
+      parsed.toolsConfig = toolsConfig;
+      index += 1;
+      continue;
+    }
     if (arg === '--allow-different-flatc-version') {
       parsed.allowDifferentFlatcVersion = true;
       continue;
@@ -53,6 +63,71 @@ function parseArgs(argv) {
 
 function repoRootFromScript() {
   return path.resolve(__dirname, '..');
+}
+
+function getProtocolToolsConfigPath(repoRoot = repoRootFromScript(), explicitConfig) {
+  if (explicitConfig) {
+    return path.isAbsolute(explicitConfig)
+      ? path.normalize(explicitConfig)
+      : path.join(repoRoot, explicitConfig);
+  }
+  return path.join(repoRoot, PROTOCOL_TOOLS_CONFIG);
+}
+
+function readJsonFile(filePath, label) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      throw new Error(`${label} not found at ${filePath}.`);
+    }
+    throw new Error(`Failed to read ${label} at ${filePath}: ${error.message}`);
+  }
+}
+
+function getPlatformKey(platform = process.platform, arch = process.arch) {
+  return `${platform}-${arch}`;
+}
+
+function resolveRepoPath(repoRoot, value, label) {
+  if (!value || typeof value !== 'string') {
+    throw new Error(`${label} must be a non-empty string.`);
+  }
+  return path.isAbsolute(value) ? path.normalize(value) : path.join(repoRoot, value);
+}
+
+function getConfiguredFlatc({
+  repoRoot = repoRootFromScript(),
+  configPath,
+  platform = process.platform,
+  arch = process.arch,
+} = {}) {
+  const resolvedConfigPath = getProtocolToolsConfigPath(repoRoot, configPath);
+  const config = readJsonFile(resolvedConfigPath, 'Protocol tools config');
+  if (!config.flatc || typeof config.flatc !== 'object') {
+    throw new Error(`Protocol tools config missing flatc section: ${resolvedConfigPath}.`);
+  }
+
+  const platformKey = getPlatformKey(platform, arch);
+  return {
+    version: config.flatc.version,
+    executable: resolveRepoPath(repoRoot, config.flatc.path, 'flatc.path'),
+    download: config.flatc.downloads?.[platformKey],
+    platformKey,
+  };
+}
+
+function resolveFlatcPath({
+  repoRoot = repoRootFromScript(),
+  explicitFlatc,
+  configPath,
+  platform = process.platform,
+  arch = process.arch,
+} = {}) {
+  if (explicitFlatc) {
+    return explicitFlatc;
+  }
+  return getConfiguredFlatc({ repoRoot, configPath, platform, arch }).executable;
 }
 
 function getProtocolOutputPaths(repoRoot = repoRootFromScript()) {
@@ -166,7 +241,7 @@ function getFlatcVersion(flatc) {
     });
   } catch (error) {
     if (error.code === 'ENOENT') {
-      throw new Error('flatc not found. Install the FlatBuffers compiler or set UPI_FLATC to flatc.exe.');
+      throw new Error(`flatc not found at ${flatc}. Run npm.cmd run ensure-flatc or pass --flatc <path>.`);
     }
     const details = [error.message, error.stderr?.toString(), error.stdout?.toString()]
       .filter(Boolean)
@@ -190,7 +265,11 @@ function getTypescriptCompiler(nodeShellDir, platform = process.platform) {
 function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   const paths = getProtocolOutputPaths();
-  const flatc = args.flatc || process.env.UPI_FLATC || 'flatc';
+  const flatc = resolveFlatcPath({
+    repoRoot: paths.repoRoot,
+    explicitFlatc: args.flatc,
+    configPath: args.toolsConfig,
+  });
 
   const flatcVersion = getFlatcVersion(flatc);
   if ((flatcVersion !== REQUIRED_FLATC_VERSION) && !args.allowDifferentFlatcVersion) {
@@ -258,12 +337,16 @@ function main(argv = process.argv.slice(2)) {
 module.exports = {
   REQUIRED_FLATC_VERSION,
   buildFlatcCommands,
+  getConfiguredFlatc,
+  getFlatcVersion,
   getProtocolOutputPaths,
+  getProtocolToolsConfigPath,
   getTypescriptCompiler,
   main,
   normalizeLineEndings,
   parseArgs,
   removeLegacyCppOutput,
+  resolveFlatcPath,
   setGeneratedTypescriptBarrel,
 };
 

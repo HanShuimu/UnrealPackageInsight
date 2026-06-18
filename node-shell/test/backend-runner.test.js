@@ -67,6 +67,18 @@ function createFakeKoffi() {
         return {
           func(signature) {
             calls.push(signature);
+            if (signature === 'bool __stdcall SetDefaultDllDirectories(uint32_t DirectoryFlags)') {
+              return (flags) => {
+                calls.push(`set-default-dll-directories:${flags}`);
+                return true;
+              };
+            }
+            if (signature === 'void* __stdcall AddDllDirectory(const char16_t *NewDirectory)') {
+              return (directory) => {
+                calls.push(`add-dll-directory:${directory}`);
+                return 'directory-cookie';
+              };
+            }
             return (flags, moduleName, outHandle) => {
               calls.push(`pin:${flags}:${moduleName}`);
               outHandle[0] = 'backend-hmodule';
@@ -100,6 +112,11 @@ test('runBackendSmoke loads the DLL and prints V1 backend info', () => {
   });
 
   assert.deepEqual(fakeKoffi.calls, [
+    'load:kernel32.dll',
+    'bool __stdcall SetDefaultDllDirectories(uint32_t DirectoryFlags)',
+    'set-default-dll-directories:4096',
+    'void* __stdcall AddDllDirectory(const char16_t *NewDirectory)',
+    'add-dll-directory:C:\\backend',
     'load:C:\\backend\\UnrealPackageInsightBackend.dll',
     'load:kernel32.dll',
     'opaque',

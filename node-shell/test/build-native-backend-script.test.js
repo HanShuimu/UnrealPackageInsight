@@ -22,6 +22,7 @@ const {
   repoRootFromScript,
   resolveConfigurations,
   runBatchFile,
+  stageRuntimeDependencies,
 } = require('../../scripts/build-native-backend.js');
 
 function writeRequiredGeneratedProtocolHeaders(sourceDir) {
@@ -180,6 +181,46 @@ test('findBuiltDll discovers the newest backend DLL under Engine/Binaries/Win64'
   assert.equal(findBuiltDll(engineRoot), newerDllPath);
 });
 
+test('stageRuntimeDependencies copies only imported Engine DLL dependencies recursively', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-runtime-deps-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const engineBinariesDir = path.join(root, 'engine', 'Engine', 'Binaries', 'Win64');
+  const destinationDir = path.join(root, 'native');
+  const backendPath = path.join(destinationDir, 'UnrealPackageInsightBackend.dll');
+  const corePath = path.join(engineBinariesDir, 'UnrealEditor-Core.dll');
+  const tracePath = path.join(engineBinariesDir, 'Nested', 'UnrealTraceLog.dll');
+  const unusedPath = path.join(engineBinariesDir, 'UnrealEditor-Unused.dll');
+  for (const filePath of [backendPath, corePath, tracePath, unusedPath]) {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, path.basename(filePath));
+  }
+
+  const importsByPath = new Map([
+    [backendPath, ['UnrealEditor-Core.dll', 'KERNEL32.dll']],
+    [corePath, ['UnrealTraceLog.dll']],
+    [tracePath, []],
+  ]);
+
+  const result = stageRuntimeDependencies({
+    entryDllPath: backendPath,
+    engineBinariesDir,
+    destinationDir,
+    readImportedDllNames(filePath) {
+      assert.notEqual(filePath, unusedPath);
+      return importsByPath.get(filePath) || [];
+    },
+  });
+
+  assert.deepEqual(result.copied.map((entry) => entry.name).sort(), [
+    'UnrealEditor-Core.dll',
+    'UnrealTraceLog.dll',
+  ]);
+  assert.deepEqual(result.missing, ['KERNEL32.dll']);
+  assert.equal(fs.readFileSync(path.join(destinationDir, 'UnrealEditor-Core.dll'), 'utf8'), 'UnrealEditor-Core.dll');
+  assert.equal(fs.readFileSync(path.join(destinationDir, 'UnrealTraceLog.dll'), 'utf8'), 'UnrealTraceLog.dll');
+  assert.equal(fs.existsSync(path.join(destinationDir, 'UnrealEditor-Unused.dll')), false);
+});
+
 test('buildNativeBackends preserves existing staged source when input validation fails', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-build-guard-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -250,10 +291,9 @@ test('buildNativeBackends preserves existing staged source when configuration is
   assert.equal(fs.existsSync(markerPath), true);
 });
 
-test('defaultSmokeCheck loads the backend with a temporary build-time DLL search path', (t) => {
+test('defaultSmokeCheck loads the staged backend without mutating PATH', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-smoke-check-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const engineRoot = path.join(root, 'engine');
   const dllPath = path.join(root, 'native', 'UnrealPackageInsightBackend.dll');
   fs.mkdirSync(path.dirname(dllPath), { recursive: true });
   fs.writeFileSync(dllPath, '');
@@ -266,7 +306,6 @@ test('defaultSmokeCheck loads the backend with a temporary build-time DLL search
 
   const result = defaultSmokeCheck({
     dllPath,
-    engineRoot,
     koffiModule,
     env,
     log(message) {
@@ -286,16 +325,12 @@ test('defaultSmokeCheck loads the backend with a temporary build-time DLL search
   assert.equal(calls[0].koffi, koffiModule);
   assert.deepEqual(logs, ['smoked']);
   assert.equal(env.PATH, 'C:\\Existing\\Bin');
-  const smokePathParts = pathsDuringSmoke[0].split(';');
-  assert.equal(smokePathParts[0], path.win32.dirname(dllPath));
-  assert.equal(smokePathParts[1], path.win32.join(engineRoot, 'Engine', 'Binaries', 'Win64'));
-  assert.equal(smokePathParts[2], 'C:\\Existing\\Bin');
+  assert.deepEqual(pathsDuringSmoke, ['C:\\Existing\\Bin']);
 });
 
-test('defaultSmokeCheck rejects mismatched backend protocol and restores PATH', (t) => {
+test('defaultSmokeCheck rejects mismatched backend protocol without mutating PATH', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-smoke-protocol-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const engineRoot = path.join(root, 'engine');
   const dllPath = path.join(root, 'native', 'UnrealPackageInsightBackend.dll');
   fs.mkdirSync(path.dirname(dllPath), { recursive: true });
   fs.writeFileSync(dllPath, '');
@@ -303,7 +338,6 @@ test('defaultSmokeCheck rejects mismatched backend protocol and restores PATH', 
 
   assert.throws(() => defaultSmokeCheck({
     dllPath,
-    engineRoot,
     koffiModule: {},
     env,
     smokeRunner() {
@@ -423,6 +457,7 @@ test('buildNativeBackends stages and builds all configurations by default', (t) 
 
   const calls = [];
   const smokeCalls = [];
+  const runtimeDependencyCalls = [];
   const result = buildNativeBackends({
     repoRoot,
     engineRoot,
@@ -439,6 +474,11 @@ test('buildNativeBackends stages and builds all configurations by default', (t) 
       smokeCalls.push({ dllPath, manifest, engineRoot: smokeEngineRoot });
       return { ok: true };
     },
+    stageRuntimeDependencies({ entryDllPath, engineBinariesDir, destinationDir }) {
+      runtimeDependencyCalls.push({ entryDllPath, engineBinariesDir, destinationDir });
+      fs.writeFileSync(path.join(destinationDir, 'UnrealEditor-Core.dll'), 'runtime');
+      return { copied: [{ name: 'UnrealEditor-Core.dll' }], missing: [] };
+    },
   });
 
   assert.deepEqual(calls, ['Debug', 'Development', 'Shipping']);
@@ -451,6 +491,13 @@ test('buildNativeBackends stages and builds all configurations by default', (t) 
   assert.deepEqual(smokeCalls.map((entry) => entry.dllPath), result.map((entry) => entry.dllPath));
   assert.deepEqual(smokeCalls.map((entry) => entry.manifest.id), result.map((entry) => entry.manifest.id));
   assert.deepEqual(smokeCalls.map((entry) => entry.engineRoot), [engineRoot, engineRoot, engineRoot]);
+  assert.deepEqual(runtimeDependencyCalls.map((entry) => entry.entryDllPath), result.map((entry) => entry.dllPath));
+  assert.deepEqual(runtimeDependencyCalls.map((entry) => entry.engineBinariesDir), [
+    path.join(engineRoot, 'Engine', 'Binaries', 'Win64'),
+    path.join(engineRoot, 'Engine', 'Binaries', 'Win64'),
+    path.join(engineRoot, 'Engine', 'Binaries', 'Win64'),
+  ]);
+  assert.deepEqual(runtimeDependencyCalls.map((entry) => entry.destinationDir), result.map((entry) => entry.nativeDir));
   assert.equal(fs.existsSync(path.join(
     engineRoot,
     'Engine',

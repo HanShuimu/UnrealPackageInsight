@@ -4,13 +4,18 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
+const repoRoot = path.resolve(__dirname, '..', '..');
+
 const {
   buildFlatcCommands,
+  getConfiguredFlatc,
   getProtocolOutputPaths,
+  getProtocolToolsConfigPath,
   getTypescriptCompiler,
   normalizeLineEndings,
   parseArgs,
   removeLegacyCppOutput,
+  resolveFlatcPath,
   setGeneratedTypescriptBarrel,
 } = require('../../scripts/generate-protocol.js');
 
@@ -19,9 +24,16 @@ function makeTempDir() {
 }
 
 test('parseArgs accepts flatc path and allow-different-flatc-version flag', () => {
-  assert.deepEqual(parseArgs(['--flatc', 'C:\\Tools\\flatc.exe', '--allow-different-flatc-version']), {
+  assert.deepEqual(parseArgs([
+    '--flatc',
+    'C:\\Tools\\flatc.exe',
+    '--tools-config',
+    'tools\\protocol-tools.json',
+    '--allow-different-flatc-version',
+  ]), {
     allowDifferentFlatcVersion: true,
     flatc: 'C:\\Tools\\flatc.exe',
+    toolsConfig: 'tools\\protocol-tools.json',
   });
 });
 
@@ -32,6 +44,88 @@ test('parseArgs rejects unexpected args', () => {
 test('parseArgs rejects missing flatc values', () => {
   assert.throws(() => parseArgs(['--flatc']), /Missing value for --flatc/);
   assert.throws(() => parseArgs(['--flatc', '--allow-different-flatc-version']), /Missing value for --flatc/);
+});
+
+test('parseArgs rejects missing tools config values', () => {
+  assert.throws(() => parseArgs(['--tools-config']), /Missing value for --tools-config/);
+  assert.throws(() => parseArgs(['--tools-config', '--flatc']), /Missing value for --tools-config/);
+});
+
+test('getProtocolToolsConfigPath routes to the repository tools config by default', () => {
+  const repoRoot = path.join(path.sep, 'repo', 'UnrealPackageInsight');
+
+  assert.equal(
+    getProtocolToolsConfigPath(repoRoot),
+    path.join(repoRoot, 'tools', 'protocol-tools.json'),
+  );
+});
+
+test('getConfiguredFlatc resolves repository-relative flatc path and platform download', () => {
+  const tempDir = makeTempDir();
+  try {
+    const configPath = path.join(tempDir, 'tools.json');
+    fs.writeFileSync(configPath, JSON.stringify({
+      flatc: {
+        version: '24.3.25',
+        path: 'node-shell/.cache/flatc/24.3.25/win32-x64/flatc.exe',
+        downloads: {
+          'win32-x64': {
+            url: 'https://example.test/flatc.zip',
+            sha256: 'abc123',
+          },
+        },
+      },
+    }));
+
+    assert.deepEqual(getConfiguredFlatc({
+      repoRoot: tempDir,
+      configPath,
+      platform: 'win32',
+      arch: 'x64',
+    }), {
+      version: '24.3.25',
+      executable: path.join(tempDir, 'node-shell', '.cache', 'flatc', '24.3.25', 'win32-x64', 'flatc.exe'),
+      download: {
+        url: 'https://example.test/flatc.zip',
+        sha256: 'abc123',
+      },
+      platformKey: 'win32-x64',
+    });
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('resolveFlatcPath prefers explicit argument and otherwise uses tools config', () => {
+  const tempDir = makeTempDir();
+  try {
+    const configPath = path.join(tempDir, 'tools.json');
+    fs.writeFileSync(configPath, JSON.stringify({
+      flatc: {
+        version: '24.3.25',
+        path: 'tools/flatc.exe',
+        downloads: {},
+      },
+    }));
+
+    assert.equal(
+      resolveFlatcPath({ repoRoot: tempDir, explicitFlatc: 'C:\\Tools\\flatc.exe', configPath }),
+      'C:\\Tools\\flatc.exe',
+    );
+    assert.equal(
+      resolveFlatcPath({ repoRoot: tempDir, configPath }),
+      path.join(tempDir, 'tools', 'flatc.exe'),
+    );
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('generate-protocol script does not read workflow variables from environment variables', () => {
+  const source = fs.readFileSync(path.join(repoRoot, 'scripts', 'generate-protocol.js'), 'utf8');
+
+  assert.doesNotMatch(source, /process\.env/);
+  assert.doesNotMatch(source, /UPI_FLATC/);
 });
 
 test('getProtocolOutputPaths routes C++ to the Unreal Program and JS/TS to the Node protocol package', () => {

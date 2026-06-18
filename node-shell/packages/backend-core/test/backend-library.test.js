@@ -51,6 +51,18 @@ test('loadBackendLibrary pins the backend DLL on Windows before registering expo
         return {
           func(signature) {
             events.push(['kernel-func', signature]);
+            if (signature === 'bool __stdcall SetDefaultDllDirectories(uint32_t DirectoryFlags)') {
+              return (flags) => {
+                events.push(['set-default-dll-directories', flags]);
+                return true;
+              };
+            }
+            if (signature === 'void* __stdcall AddDllDirectory(const char16_t *NewDirectory)') {
+              return (directory) => {
+                events.push(['add-dll-directory', directory]);
+                return 'directory-cookie';
+              };
+            }
             return (flags, moduleName, outHandle) => {
               events.push(['pin', flags, moduleName, Array.isArray(outHandle)]);
               outHandle[0] = 'backend-hmodule';
@@ -81,6 +93,11 @@ test('loadBackendLibrary pins the backend DLL on Windows before registering expo
   loadBackendLibrary({ dllPath: 'backend.dll', koffi, platform: 'win32' });
 
   assert.deepEqual(events, [
+    ['load', 'kernel32.dll'],
+    ['kernel-func', 'bool __stdcall SetDefaultDllDirectories(uint32_t DirectoryFlags)'],
+    ['set-default-dll-directories', 4096],
+    ['kernel-func', 'void* __stdcall AddDllDirectory(const char16_t *NewDirectory)'],
+    ['add-dll-directory', '.'],
     ['load', 'backend.dll'],
     ['load', 'kernel32.dll'],
     ['opaque'],
@@ -106,6 +123,12 @@ test('loadBackendLibrary reuses the Windows HMODULE type across repeated loads',
         return {
           func(signature) {
             events.push(['kernel-func', signature]);
+            if (signature === 'bool __stdcall SetDefaultDllDirectories(uint32_t DirectoryFlags)') {
+              return () => true;
+            }
+            if (signature === 'void* __stdcall AddDllDirectory(const char16_t *NewDirectory)') {
+              return () => 'directory-cookie';
+            }
             return (flags, moduleName, outHandle) => {
               events.push(['pin', flags, moduleName, Array.isArray(outHandle)]);
               outHandle[0] = `pinned:${moduleName}`;
@@ -158,6 +181,12 @@ test('loadBackendLibrary throws when Windows DLL pinning fails', () => {
         return {
           func(signature) {
             events.push(['kernel-func', signature]);
+            if (signature === 'bool __stdcall SetDefaultDllDirectories(uint32_t DirectoryFlags)') {
+              return () => true;
+            }
+            if (signature === 'void* __stdcall AddDllDirectory(const char16_t *NewDirectory)') {
+              return () => 'directory-cookie';
+            }
             return () => {
               events.push(['pin']);
               return false;
@@ -186,6 +215,9 @@ test('loadBackendLibrary throws when Windows DLL pinning fails', () => {
     /Unable to pin backend DLL.*backend\.dll/
   );
   assert.deepEqual(events, [
+    ['load', 'kernel32.dll'],
+    ['kernel-func', 'bool __stdcall SetDefaultDllDirectories(uint32_t DirectoryFlags)'],
+    ['kernel-func', 'void* __stdcall AddDllDirectory(const char16_t *NewDirectory)'],
     ['load', 'backend.dll'],
     ['load', 'kernel32.dll'],
     [
