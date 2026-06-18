@@ -4,12 +4,15 @@ const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const { runBackendSmoke } = require('../node-shell/src/backend-runner');
-const { buildDllSearchPath } = require('../node-shell/src/dll-paths');
 
 const ALL_CONFIGURATIONS = ['Debug', 'Development', 'Shipping'];
 const DEFAULT_UNREAL_PLATFORM = 'Win64';
 const BACKEND_DLL_NAME = 'UnrealPackageInsightBackend.dll';
 const PROTOCOL_VERSION = 1;
+const PE32_MAGIC = 0x10b;
+const PE32_PLUS_MAGIC = 0x20b;
+const IMAGE_DIRECTORY_ENTRY_IMPORT = 1;
+const IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT = 13;
 const REQUIRED_GENERATED_PROTOCOL_HEADERS = [
   'upi_backend_info_generated.h',
   'upi_common_generated.h',
@@ -173,6 +176,242 @@ function findBuiltDll(engineRoot) {
   return dlls[0].filePath;
 }
 
+function getEngineBinariesDir(engineRoot) {
+  return path.join(engineRoot, 'Engine', 'Binaries', 'Win64');
+}
+
+function readNullTerminatedAscii(buffer, offset) {
+  let end = offset;
+  while (end < buffer.length && buffer[end] !== 0) {
+    end += 1;
+  }
+  return buffer.toString('ascii', offset, end);
+}
+
+function createRvaResolver(sections) {
+  return function resolveRva(rva) {
+    for (const section of sections) {
+      const sectionSize = Math.max(section.virtualSize, section.rawDataSize);
+      if (rva >= section.virtualAddress && rva < section.virtualAddress + sectionSize) {
+        return section.rawDataPointer + (rva - section.virtualAddress);
+      }
+    }
+    return null;
+  };
+}
+
+function readPeMetadata(buffer, filePath) {
+  if (buffer.length < 0x40 || buffer.toString('ascii', 0, 2) !== 'MZ') {
+    throw new Error(`PE import scan failed for ${filePath}: missing MZ header`);
+  }
+  const peOffset = buffer.readUInt32LE(0x3c);
+  if (peOffset + 24 > buffer.length || buffer.toString('ascii', peOffset, peOffset + 4) !== 'PE\u0000\u0000') {
+    throw new Error(`PE import scan failed for ${filePath}: missing PE header`);
+  }
+
+  const coffOffset = peOffset + 4;
+  const sectionCount = buffer.readUInt16LE(coffOffset + 2);
+  const optionalHeaderSize = buffer.readUInt16LE(coffOffset + 16);
+  const optionalHeaderOffset = coffOffset + 20;
+  const magic = buffer.readUInt16LE(optionalHeaderOffset);
+  const dataDirectoryOffset = magic === PE32_MAGIC
+    ? optionalHeaderOffset + 96
+    : magic === PE32_PLUS_MAGIC
+      ? optionalHeaderOffset + 112
+      : null;
+  if (dataDirectoryOffset === null) {
+    throw new Error(`PE import scan failed for ${filePath}: unsupported optional header`);
+  }
+
+  const sectionOffset = optionalHeaderOffset + optionalHeaderSize;
+  const sections = [];
+  for (let index = 0; index < sectionCount; index += 1) {
+    const offset = sectionOffset + index * 40;
+    if (offset + 40 > buffer.length) {
+      throw new Error(`PE import scan failed for ${filePath}: truncated section table`);
+    }
+    sections.push({
+      virtualSize: buffer.readUInt32LE(offset + 8),
+      virtualAddress: buffer.readUInt32LE(offset + 12),
+      rawDataSize: buffer.readUInt32LE(offset + 16),
+      rawDataPointer: buffer.readUInt32LE(offset + 20),
+    });
+  }
+
+  return { dataDirectoryOffset, resolveRva: createRvaResolver(sections) };
+}
+
+function readDataDirectory(buffer, metadata, directoryIndex) {
+  const offset = metadata.dataDirectoryOffset + directoryIndex * 8;
+  if (offset + 8 > buffer.length) {
+    return { rva: 0, size: 0 };
+  }
+  return {
+    rva: buffer.readUInt32LE(offset),
+    size: buffer.readUInt32LE(offset + 4),
+  };
+}
+
+function descriptorIsEmpty(buffer, offset, size) {
+  for (let index = 0; index < size; index += 4) {
+    if (buffer.readUInt32LE(offset + index) !== 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function readImportDescriptorNames({
+  buffer,
+  metadata,
+  directoryIndex,
+  descriptorSize,
+  nameRvaOffset,
+}) {
+  const directory = readDataDirectory(buffer, metadata, directoryIndex);
+  if (directory.rva === 0 || directory.size === 0) {
+    return [];
+  }
+  const descriptorOffset = metadata.resolveRva(directory.rva);
+  if (descriptorOffset === null) {
+    return [];
+  }
+
+  const names = [];
+  for (let offset = descriptorOffset; offset + descriptorSize <= buffer.length; offset += descriptorSize) {
+    if (descriptorIsEmpty(buffer, offset, descriptorSize)) {
+      break;
+    }
+    const nameRva = buffer.readUInt32LE(offset + nameRvaOffset);
+    if (nameRva === 0) {
+      continue;
+    }
+    const nameOffset = metadata.resolveRva(nameRva);
+    if (nameOffset === null || nameOffset >= buffer.length) {
+      continue;
+    }
+    const name = readNullTerminatedAscii(buffer, nameOffset);
+    if (name) {
+      names.push(name);
+    }
+  }
+  return names;
+}
+
+function readPeImportedDllNames(filePath) {
+  const buffer = fs.readFileSync(filePath);
+  const metadata = readPeMetadata(buffer, filePath);
+  const names = [
+    ...readImportDescriptorNames({
+      buffer,
+      metadata,
+      directoryIndex: IMAGE_DIRECTORY_ENTRY_IMPORT,
+      descriptorSize: 20,
+      nameRvaOffset: 12,
+    }),
+    ...readImportDescriptorNames({
+      buffer,
+      metadata,
+      directoryIndex: IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT,
+      descriptorSize: 32,
+      nameRvaOffset: 4,
+    }),
+  ];
+  return Array.from(new Set(names));
+}
+
+function findDllFiles(root, found = []) {
+  if (!fs.existsSync(root)) {
+    return found;
+  }
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const entryPath = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      findDllFiles(entryPath, found);
+    } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.dll')) {
+      found.push(entryPath);
+    }
+  }
+  return found;
+}
+
+function buildDllIndex(root) {
+  const files = findDllFiles(root)
+    .sort((left, right) => {
+      const leftDepth = path.relative(root, left).split(path.sep).length;
+      const rightDepth = path.relative(root, right).split(path.sep).length;
+      return leftDepth - rightDepth || left.localeCompare(right);
+    });
+  const byName = new Map();
+  for (const filePath of files) {
+    const key = path.basename(filePath).toLowerCase();
+    if (!byName.has(key)) {
+      byName.set(key, filePath);
+    }
+  }
+  return byName;
+}
+
+function samePath(left, right) {
+  return path.resolve(left).toLowerCase() === path.resolve(right).toLowerCase();
+}
+
+function stageRuntimeDependencies({
+  entryDllPath,
+  engineBinariesDir,
+  destinationDir,
+  readImportedDllNames = readPeImportedDllNames,
+}) {
+  const engineDlls = buildDllIndex(engineBinariesDir);
+  const queue = [entryDllPath];
+  const processed = new Set();
+  const copiedByName = new Set();
+  const copied = [];
+  const missingByName = new Map();
+
+  while (queue.length > 0) {
+    const currentPath = queue.shift();
+    const currentKey = path.resolve(currentPath).toLowerCase();
+    if (processed.has(currentKey)) {
+      continue;
+    }
+    processed.add(currentKey);
+
+    for (const importedName of readImportedDllNames(currentPath)) {
+      if (!String(importedName).toLowerCase().endsWith('.dll')) {
+        continue;
+      }
+      const importKey = path.basename(importedName).toLowerCase();
+      const sourcePath = engineDlls.get(importKey);
+      if (!sourcePath) {
+        if (!missingByName.has(importKey)) {
+          missingByName.set(importKey, importedName);
+        }
+        continue;
+      }
+
+      const destinationPath = path.join(destinationDir, path.basename(sourcePath));
+      if (!samePath(sourcePath, destinationPath)) {
+        fs.copyFileSync(sourcePath, destinationPath);
+      }
+      if (!copiedByName.has(importKey)) {
+        copiedByName.add(importKey);
+        copied.push({
+          name: path.basename(sourcePath),
+          source: sourcePath,
+          destination: destinationPath,
+        });
+      }
+      queue.push(sourcePath);
+    }
+  }
+
+  return {
+    copied,
+    missing: Array.from(missingByName.values()),
+  };
+}
+
 function quoteBatchArgument(argument) {
   const value = String(argument);
   if (value.length === 0 || /[\s"&|<>^]/.test(value)) {
@@ -205,36 +444,19 @@ function defaultRunBuild({ engineRoot, configuration, execFile = execFileSync })
 
 function defaultSmokeCheck({
   dllPath,
-  engineRoot,
   koffiModule = require(path.join(repoRootFromScript(), 'node-shell', 'node_modules', 'koffi')),
   smokeRunner = runBackendSmoke,
-  env = process.env,
   log = console.log,
 }) {
   if (!fs.existsSync(dllPath)) {
     throw new Error(`Staged DLL missing: ${dllPath}`);
   }
-  const hadPath = Object.prototype.hasOwnProperty.call(env, 'PATH');
-  const originalPath = env.PATH;
-  env.PATH = buildDllSearchPath({
-    dllPath,
-    engineRoot,
-    existingPath: originalPath || '',
-  });
-  try {
-    const result = smokeRunner({ dllPath, koffi: koffiModule, log });
-    const protocolVersion = result?.backendInfo?.protocolVersion;
-    if (protocolVersion !== PROTOCOL_VERSION) {
-      throw new Error(`Backend protocol version ${protocolVersion} does not match expected ${PROTOCOL_VERSION}`);
-    }
-    return result;
-  } finally {
-    if (hadPath) {
-      env.PATH = originalPath;
-    } else {
-      delete env.PATH;
-    }
+  const result = smokeRunner({ dllPath, koffi: koffiModule, log });
+  const protocolVersion = result?.backendInfo?.protocolVersion;
+  if (protocolVersion !== PROTOCOL_VERSION) {
+    throw new Error(`Backend protocol version ${protocolVersion} does not match expected ${PROTOCOL_VERSION}`);
   }
+  return result;
 }
 
 function buildNativeBackends({
@@ -245,6 +467,7 @@ function buildNativeBackends({
   hostArch = process.arch,
   runBuild = defaultRunBuild,
   smokeCheck = defaultSmokeCheck,
+  stageRuntimeDependencies: stageRuntimeDependenciesFn = stageRuntimeDependencies,
 }) {
   if (!engineRoot) {
     throw new Error('Missing required --engine-root');
@@ -278,6 +501,11 @@ function buildNativeBackends({
     ensureDirectory(nativeDir);
     const stagedDll = path.join(nativeDir, BACKEND_DLL_NAME);
     fs.copyFileSync(builtDll, stagedDll);
+    const runtimeDependencies = stageRuntimeDependenciesFn({
+      entryDllPath: stagedDll,
+      engineBinariesDir: getEngineBinariesDir(engineRoot),
+      destinationDir: nativeDir,
+    });
     const manifest = createBackendManifest({
       engineVersion,
       hostPlatform,
@@ -286,8 +514,8 @@ function buildNativeBackends({
       configuration: buildConfiguration,
     });
     fs.writeFileSync(path.join(nativeDir, 'backend.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-    smokeCheck({ dllPath: stagedDll, engineRoot, manifest });
-    results.push({ manifest, nativeDir, dllPath: stagedDll });
+    smokeCheck({ dllPath: stagedDll, engineRoot, manifest, runtimeDependencies });
+    results.push({ manifest, nativeDir, dllPath: stagedDll, runtimeDependencies });
   }
   return results;
 }
@@ -333,14 +561,17 @@ module.exports = {
   ensureDirectory,
   findBuiltDll,
   findFiles,
+  getEngineBinariesDir,
   getNativeBackendDir,
   getProgramGeneratedProtocolDir,
   main,
   normalizeConfiguration,
   parseArgs,
   readEngineVersion,
+  readPeImportedDllNames,
   removeDirectory,
   repoRootFromScript,
   resolveConfigurations,
   runBatchFile,
+  stageRuntimeDependencies,
 };
