@@ -1,4 +1,8 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-npm run penpot:mcp:stop
+call npm run penpot:mcp:stop
+set "EXIT_CODE=%ERRORLEVEL%"
+echo.
+pause
+exit /b %EXIT_CODE%

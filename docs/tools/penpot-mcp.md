@@ -31,9 +31,17 @@ The background runner writes runtime state and logs under
 
 - `server.json`: the tracked background process ID and endpoint metadata.
 - `server.log`: output from `@penpot/mcp`.
+- `npm-cache/`: the project-local npm/npx cache for Penpot MCP.
 
 The background process stays alive until it is stopped, the user signs out, or
 Windows restarts. After a Windows restart, run `npm run penpot:mcp:start` again.
+
+The runner uses the official npm registry for the Penpot MCP launch chain and
+allows pnpm dependency build scripts required by Penpot MCP's esbuild and sharp
+dependencies. This avoids failures caused by an incomplete global npx cache or
+by npm mirrors that do not contain every Penpot dependency version. If a local
+Penpot MCP cache is left in a bad state, startup resets `artifacts/penpot-mcp/npm-cache/`
+and retries once.
 
 On Windows, the batch wrappers call the same npm scripts:
 
@@ -42,6 +50,9 @@ start-penpot-mcp.bat
 status-penpot-mcp.bat
 stop-penpot-mcp.bat
 ```
+
+The batch wrappers pause before closing, so double-clicked windows keep their
+status or error output visible.
 
 ## Connect Penpot
 
