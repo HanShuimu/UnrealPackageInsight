@@ -2,12 +2,15 @@
 setlocal
 
 rem Edit this path to match your Unreal Engine installation.
-set "ENGINE_ROOT=C:\Program Files\Epic Games\UE_5.7"
+set "ENGINE_ROOT=C:\WORKSPACE_UE\UnrealEngine"
 
 rem Use Debug, Development, or Shipping. Leave empty to build all configurations.
-set "BUILD_CONFIGURATION=Development"
+set "BUILD_CONFIGURATION="
 
 pushd "%~dp0"
+
+if "%ENGINE_ROOT%"=="" goto invalid_engine_root
+if not exist "%ENGINE_ROOT%\Engine\Build\BatchFiles\Build.bat" goto invalid_engine_root
 
 call npm.cmd --prefix node-shell install
 if errorlevel 1 goto fail
@@ -29,6 +32,13 @@ echo.
 echo Build completed.
 popd
 exit /b 0
+
+:invalid_engine_root
+echo.
+echo Engine root not found or invalid: %ENGINE_ROOT%
+echo Expected Build.bat at: "%ENGINE_ROOT%\Engine\Build\BatchFiles\Build.bat"
+popd
+exit /b 1
 
 :fail
 set "UPI_EXIT=%ERRORLEVEL%"
