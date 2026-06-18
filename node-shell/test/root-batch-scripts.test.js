@@ -14,12 +14,15 @@ test('root build batch installs dependencies and builds native plus renderer thr
 
   assert.match(script, /set "ENGINE_ROOT=/);
   assert.match(script, /set "BUILD_CONFIGURATION=/);
+  assert.match(script, /set "RUN_GENERATE_PROTOCOL=0"/);
   assert.match(script, /if "%ENGINE_ROOT%"=="" goto invalid_engine_root/);
   assert.match(script, /if not exist "%ENGINE_ROOT%\\Engine\\Build\\BatchFiles\\Build\.bat" goto invalid_engine_root/);
   assert.match(script, /Engine root not found or invalid: %ENGINE_ROOT%/);
   assert.match(script, /:invalid_engine_root[\s\S]*pause[\s\S]*exit \/b 1/);
   assert.match(script, /call npm\.cmd --prefix node-shell install/);
+  assert.match(script, /if "%RUN_GENERATE_PROTOCOL%"=="1" \(/);
   assert.match(script, /call npm\.cmd --prefix node-shell run generate-protocol/);
+  assert.match(script, /Skipping protocol generation/);
   assert.match(script, /call npm\.cmd run build:native -- --engine-root "%ENGINE_ROOT%"/);
   assert.match(script, /--configuration "%BUILD_CONFIGURATION%"/);
   assert.match(script, /call npm\.cmd --prefix node-shell run build:renderer/);
