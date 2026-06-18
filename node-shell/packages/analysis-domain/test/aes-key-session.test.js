@@ -12,12 +12,19 @@ test('normalizes AES keys by trimming, removing 0x prefix, and lowercasing', () 
   );
 });
 
+test('normalizes Unreal config Base64 AES keys to lowercase hex', () => {
+  assert.equal(
+    normalizeAesKey('AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8='),
+    '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
+  );
+});
+
 test('rejects AES keys with non-hex characters or unsupported lengths', () => {
   assert.throws(() => normalizeAesKey('0xABCDEFABCDEFABCDEFABCDEFABCDEFAZ'), {
-    message: 'AES key must be 32 or 64 hex characters',
+    message: 'AES key must be 32 or 64 hex characters, or a Base64-encoded 16 or 32 byte key',
   });
   assert.throws(() => normalizeAesKey('0xABCDEF'), {
-    message: 'AES key must be 32 or 64 hex characters',
+    message: 'AES key must be 32 or 64 hex characters, or a Base64-encoded 16 or 32 byte key',
   });
 });
 

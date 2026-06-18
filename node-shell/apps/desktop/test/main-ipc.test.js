@@ -292,11 +292,38 @@ test('analysis:submitAesKeyAndRetry stores valid AES keys, retries, and reports 
     issues: [{
       severity: 'error',
       code: 'aes.invalid_key',
-      message: 'AES key must be 32 or 64 hex characters',
+      message: 'AES key must be 32 or 64 hex characters, or a Base64-encoded 16 or 32 byte key',
     }],
   });
   assert.equal(state.aesSession.getKey(), '');
   assert.equal(cleared, true);
+});
+
+test('analysis:submitAesKeyAndRetry accepts Unreal config Base64 AES keys', async () => {
+  const calls = [];
+  const state = createDesktopState();
+  state.analysisService = {
+    async analyze(filePath) {
+      calls.push({ filePath, aesKey: state.aesSession.getKey() });
+      return { status: 'OK', aesKey: state.aesSession.getKey() };
+    },
+  };
+  const handlers = createIpcHandlers({ state });
+  const filePath = 'C:\\Game\\Content\\Paks\\pakchunk0-Windows.pak';
+
+  const result = await handlers.submitAesKeyAndRetry(
+    filePath,
+    'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=',
+  );
+
+  assert.deepEqual(result, {
+    status: 'OK',
+    aesKey: '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
+  });
+  assert.deepEqual(calls, [{
+    filePath,
+    aesKey: '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
+  }]);
 });
 
 test('analysis:submitAesKeyAndRetry clears keys rejected by backend AES validation', async () => {
