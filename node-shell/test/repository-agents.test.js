@@ -12,3 +12,12 @@ test('repository instructions forbid adding environment variable dependencies to
   assert.match(instructions, /parameters or configuration files/i);
   assert.match(instructions, /Do not read workflow variables from environment variables/i);
 });
+
+test('repository instructions require GUI smoke and regression coverage for GUI changes', () => {
+  const instructions = fs.readFileSync(path.join(repoRoot, 'AGENTS.md'), 'utf8');
+
+  assert.match(instructions, /GUI Changes/i);
+  assert.match(instructions, /Electron GUI smoke test/i);
+  assert.match(instructions, /DevTools Protocol/i);
+  assert.match(instructions, /renderer regression test/i);
+});
