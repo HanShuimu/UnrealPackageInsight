@@ -11,6 +11,11 @@
     "build:native:debug": "node scripts/build-native-backend.js --configuration Debug",
     "build:native:development": "node scripts/build-native-backend.js --configuration Development",
     "build:native:shipping": "node scripts/build-native-backend.js --configuration Shipping",
+    "penpot:mcp": "npx -y @penpot/mcp@latest",
+    "penpot:mcp:start": "node scripts/penpot-mcp-service.js start",
+    "penpot:mcp:status": "node scripts/penpot-mcp-service.js status",
+    "penpot:mcp:stop": "node scripts/penpot-mcp-service.js stop",
+    "test:penpot-mcp": "node --test scripts/test/penpot-mcp-service.test.js",
     "test": "npm --prefix node-shell test"
   }
 }
