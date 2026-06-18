@@ -7,9 +7,6 @@ set "ENGINE_ROOT=C:\WORKSPACE_UE\UnrealEngine"
 rem Use Debug, Development, or Shipping. Leave empty to build all configurations.
 set "BUILD_CONFIGURATION="
 
-rem Set to 1 only after editing .fbs protocol schemas. Requires flatc 24.3.25 in PATH or UPI_FLATC.
-set "RUN_GENERATE_PROTOCOL=0"
-
 pushd "%~dp0"
 
 if "%ENGINE_ROOT%"=="" goto invalid_engine_root
@@ -18,12 +15,11 @@ if not exist "%ENGINE_ROOT%\Engine\Build\BatchFiles\Build.bat" goto invalid_engi
 call npm.cmd --prefix node-shell install
 if errorlevel 1 goto fail
 
-if "%RUN_GENERATE_PROTOCOL%"=="1" (
-  call npm.cmd --prefix node-shell run generate-protocol
-  if errorlevel 1 goto fail
-) else (
-  echo Skipping protocol generation. Set RUN_GENERATE_PROTOCOL=1 if protocol schemas changed.
-)
+call npm.cmd run ensure-flatc
+if errorlevel 1 goto fail
+
+call npm.cmd run generate-protocol
+if errorlevel 1 goto fail
 
 if "%BUILD_CONFIGURATION%"=="" (
   call npm.cmd run build:native -- --engine-root "%ENGINE_ROOT%"

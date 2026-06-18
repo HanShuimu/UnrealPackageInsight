@@ -76,6 +76,7 @@ DerivedDataCache/*
 
 # Node shell dependencies
 node-shell/node_modules/
+node-shell/.cache/
 node-shell/native/
 node-shell/apps/desktop/renderer-dist/
 

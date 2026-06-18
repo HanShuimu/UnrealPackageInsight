@@ -1,0 +1,12 @@
+{
+  "flatc": {
+    "version": "24.3.25",
+    "path": "node-shell/.cache/flatc/24.3.25/win32-x64/flatc.exe",
+    "downloads": {
+      "win32-x64": {
+        "url": "https://github.com/google/flatbuffers/releases/download/v24.3.25/Windows.flatc.binary.zip",
+        "sha256": "6455f5b6272b908dad073721e21b11720a9fddbae06e28b5c75f8ec458e7fe30"
+      }
+    }
+  }
+}

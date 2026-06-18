@@ -8,6 +8,13 @@ test('node-shell generate-protocol uses JavaScript script', () => {
   assert.equal(pkg.scripts['generate-protocol'], 'node ../scripts/generate-protocol.js');
 });
 
+test('root package exposes protocol tool acquisition and generation scripts', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8'));
+
+  assert.equal(pkg.scripts['ensure-flatc'], 'node scripts/ensure-flatc.js');
+  assert.equal(pkg.scripts['generate-protocol'], 'node scripts/generate-protocol.js');
+});
+
 test('node-shell exposes renderer build and renderer test scripts', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
 

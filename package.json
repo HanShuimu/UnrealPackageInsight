@@ -4,6 +4,8 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
+    "ensure-flatc": "node scripts/ensure-flatc.js",
+    "generate-protocol": "node scripts/generate-protocol.js",
     "build": "node scripts/build-native-backend.js",
     "build:native": "node scripts/build-native-backend.js",
     "build:native:debug": "node scripts/build-native-backend.js --configuration Debug",
