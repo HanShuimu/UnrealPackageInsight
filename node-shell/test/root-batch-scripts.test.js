@@ -20,6 +20,20 @@ test('root build batch installs dependencies and builds native plus renderer thr
   assert.match(script, /if not exist "%ENGINE_ROOT%\\Engine\\Build\\BatchFiles\\Build\.bat" goto invalid_engine_root/);
   assert.match(script, /Engine root not found or invalid: %ENGINE_ROOT%/);
   assert.match(script, /:invalid_engine_root[\s\S]*pause[\s\S]*exit \/b 1/);
+  const stages = [
+    '****** [1/5] Installing Node dependencies',
+    '****** [2/5] Ensuring FlatBuffers compiler',
+    '****** [3/5] Generating protocol bindings',
+    '****** [4/5] Building native backend',
+    '****** [5/5] Building renderer',
+  ];
+  let previousStageIndex = -1;
+  for (const stage of stages) {
+    const stageIndex = script.indexOf(`echo ${stage}`);
+    assert.notEqual(stageIndex, -1, `${stage} is printed`);
+    assert.ok(stageIndex > previousStageIndex, `${stage} is printed in order`);
+    previousStageIndex = stageIndex;
+  }
   assert.match(script, /call npm\.cmd --prefix node-shell install/);
   assert.match(script, /call npm\.cmd run ensure-flatc/);
   assert.match(script, /call npm\.cmd run generate-protocol/);
