@@ -195,3 +195,29 @@ test('analyzeIoStoreInWorker reports timeout distinctly', () => {
   assert.equal(response.issues[0].code, 'iostore.worker_timeout');
   assert.match(response.issues[0].message, /timed out/i);
 });
+
+test('analyzeIoStoreInWorker runs worker scripts through Electron node mode when needed', () => {
+  const spawnCalls = [];
+
+  analyzeIoStoreInWorker({
+    dllPath: 'backend.dll',
+    utocPath: 'global.utoc',
+    ucasPath: 'global.ucas',
+    nodePath: 'electron.exe',
+    workerPath: 'worker.js',
+    env: { PATH: 'C:\\Windows\\System32' },
+    spawnSync(command, args, options) {
+      spawnCalls.push({ command, args, options });
+      return {
+        status: 777006,
+        signal: null,
+        stdout: '',
+        stderr: '',
+      };
+    },
+  });
+
+  assert.equal(spawnCalls.length, 1);
+  assert.equal(spawnCalls[0].options.env.ELECTRON_RUN_AS_NODE, '1');
+  assert.equal(spawnCalls[0].options.env.PATH, 'C:\\Windows\\System32');
+});

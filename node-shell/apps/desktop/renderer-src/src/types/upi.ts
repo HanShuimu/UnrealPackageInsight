@@ -47,6 +47,7 @@ export type BackendSelectionCandidate = {
 
 export type BackendSelectionRequest = {
   filePath?: string;
+  analysisFilePath?: string;
   containerLabel?: string;
   probe?: Record<string, unknown>;
   candidates?: BackendSelectionCandidate[];

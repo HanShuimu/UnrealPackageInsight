@@ -114,10 +114,11 @@ function isCurrentBackendSelection(
   backendSelection: BackendSelectionRequest,
   requestId: number,
 ): boolean {
+  const analysisFilePath = backendSelection.analysisFilePath || backendSelection.filePath;
   return state.dialog.backendSelection === backendSelection
     && state.dialog.backendSelectionRequestId === requestId
     && state.analysisRequestId === requestId
-    && (!backendSelection.filePath || state.selectedFilePath === backendSelection.filePath);
+    && (!analysisFilePath || state.selectedFilePath === analysisFilePath);
 }
 
 function isSameAnalysisContext(state: AppState, filePath: string | undefined, requestId: number): boolean {
@@ -226,6 +227,7 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
           const backendSelection = {
             ...result.backendSelection,
             filePath: result.backendSelection.filePath || filePath,
+            analysisFilePath: filePath,
           };
           set({
             analysisResult: result,
@@ -372,8 +374,9 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
           return;
         }
 
-        if (backendSelection.filePath) {
-          await get().analyzeFile(backendSelection.filePath);
+        const analysisFilePath = backendSelection.analysisFilePath || backendSelection.filePath;
+        if (analysisFilePath) {
+          await get().analyzeFile(analysisFilePath);
         }
       } catch (error) {
         if (!isCurrentBackendSelection(get(), backendSelection, requestId)) {
@@ -405,7 +408,8 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
       }));
 
       void client.chooseBackend({ ...backendSelection, selectedId: '' }).catch((error) => {
-        if (isSameAnalysisContext(get(), backendSelection.filePath, requestId)) {
+        const analysisFilePath = backendSelection.analysisFilePath || backendSelection.filePath;
+        if (isSameAnalysisContext(get(), analysisFilePath, requestId)) {
           set({
             analysisResult: createErrorResult('renderer.backend_cancel_failed', error),
             statusText: 'Backend selection cancel failed',

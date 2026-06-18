@@ -95,3 +95,29 @@ test('analyzePakInWorker reports timeout distinctly', (t) => {
   assert.equal(response.issues[0].code, 'pak.worker_timeout');
   assert.match(response.issues[0].message, /timed out/i);
 });
+
+test('analyzePakInWorker runs worker scripts through Electron node mode when needed', (t) => {
+  const pakPath = createCorruptPakFixture(t);
+  const spawnCalls = [];
+
+  analyzePakInWorker({
+    dllPath: 'backend.dll',
+    pakPath,
+    nodePath: 'electron.exe',
+    workerPath: 'worker.js',
+    env: { PATH: 'C:\\Windows\\System32' },
+    spawnSync(command, args, options) {
+      spawnCalls.push({ command, args, options });
+      return {
+        status: 777006,
+        signal: null,
+        stdout: '',
+        stderr: '',
+      };
+    },
+  });
+
+  assert.equal(spawnCalls.length, 1);
+  assert.equal(spawnCalls[0].options.env.ELECTRON_RUN_AS_NODE, '1');
+  assert.equal(spawnCalls[0].options.env.PATH, 'C:\\Windows\\System32');
+});

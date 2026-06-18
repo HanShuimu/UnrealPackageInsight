@@ -15,6 +15,7 @@ const { decodeIoStoreAnalysisResponse } = require('../../protocol/src/iostore-an
 const {
   DEFAULT_WORKER_MAX_BUFFER,
   DEFAULT_WORKER_TIMEOUT_MS,
+  createWorkerEnv,
 } = require('./pak-analysis-worker-client.js');
 
 const WORKER_RESULT_PREFIX = '__UPI_IOSTORE_ANALYSIS_RESULT__';
@@ -171,7 +172,7 @@ function analyzeIoStoreInWorker({
     [workerPath],
     {
       encoding: 'utf8',
-      env,
+      env: createWorkerEnv(env),
       // Keep AES keys out of argv; Windows process command lines are observable.
       input: serializeWorkerPayload({ dllPath, utocPath, ucasPath, aesKey }),
       timeout: timeoutMs,

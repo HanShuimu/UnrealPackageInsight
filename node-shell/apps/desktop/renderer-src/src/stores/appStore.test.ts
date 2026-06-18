@@ -244,6 +244,51 @@ describe('appStore', () => {
     expect(store.getState().dialog.backendSelection).toBeNull();
   });
 
+  test('backend selection can resolve a paired UTOC while retrying the originally selected UCAS', async () => {
+    const calls: Array<{ type: string; value: unknown }> = [];
+    let analyzeCount = 0;
+    const selectedUcas = 'C:\\Paks\\pakchunk0-Windows.ucas';
+    const resolvedUtoc = 'C:\\Paks\\pakchunk0-Windows.utoc';
+    const store = createAppStore(
+      createClient({
+        analyze: async (filePath) => {
+          calls.push({ type: 'analyze', value: filePath });
+          analyzeCount += 1;
+          if (analyzeCount === 1) {
+            return {
+              status: 'Error',
+              issues: [{ severity: 'error', code: 'backend.multiple_candidates', message: 'Choose backend.' }],
+              backendSelection: createBackendSelection(resolvedUtoc),
+            };
+          }
+          return { status: 'OK', overview: { selected: filePath }, packages: [], compressedBlocks: [] };
+        },
+        chooseBackend: async (request) => {
+          calls.push({ type: 'chooseBackend', value: request });
+          return request.selectedId || '';
+        },
+      }),
+    );
+
+    await store.getState().analyzeFile(selectedUcas);
+    await store.getState().chooseBackend('test-backend');
+
+    expect(store.getState().selectedFilePath).toBe(selectedUcas);
+    expect(store.getState().analysisResult?.overview).toEqual({ selected: selectedUcas });
+    expect(calls).toEqual([
+      { type: 'analyze', value: selectedUcas },
+      {
+        type: 'chooseBackend',
+        value: {
+          ...createBackendSelection(resolvedUtoc),
+          analysisFilePath: selectedUcas,
+          selectedId: 'test-backend',
+        },
+      },
+      { type: 'analyze', value: selectedUcas },
+    ]);
+  });
+
   test('stale backend cancel error does not overwrite newer same-file analysis', async () => {
     const backendCancel = createDeferred<string>();
     let analyzeCount = 0;

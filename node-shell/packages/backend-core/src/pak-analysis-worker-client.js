@@ -128,6 +128,13 @@ function parseWorkerResult({ pakPath, stdout }) {
   }
 }
 
+function createWorkerEnv(env) {
+  return {
+    ...env,
+    ELECTRON_RUN_AS_NODE: '1',
+  };
+}
+
 function analyzePakInWorker({
   dllPath,
   pakPath,
@@ -144,7 +151,7 @@ function analyzePakInWorker({
     [workerPath],
     {
       encoding: 'utf8',
-      env,
+      env: createWorkerEnv(env),
       // Keep AES keys out of argv; Windows process command lines are observable.
       input: serializeWorkerPayload({ dllPath, pakPath, aesKey }),
       timeout: timeoutMs,
@@ -178,6 +185,7 @@ module.exports = {
   WORKER_RESULT_PREFIX,
   analyzePakInWorker,
   createPakWorkerErrorResponse,
+  createWorkerEnv,
   parseWorkerResult,
   serializeWorkerPayload,
 };
