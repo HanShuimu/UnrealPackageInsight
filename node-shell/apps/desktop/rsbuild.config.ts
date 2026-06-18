@@ -21,6 +21,9 @@ export default defineConfig({
   },
   tools: {
     rspack: {
+      output: {
+        globalObject: 'globalThis',
+      },
       target: 'electron-renderer',
     },
   },

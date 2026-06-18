@@ -18,6 +18,12 @@ test('renderer build config points at the React TypeScript entry and dist output
   assert.match(config, /assetPrefix:\s*'\.\/'/);
 });
 
+test('renderer build config uses browser-safe global object for chunk loading', () => {
+  const config = readDesktopFile('rsbuild.config.ts');
+
+  assert.match(config, /globalObject:\s*'globalThis'/);
+});
+
 test('React renderer source uses preload API through typed ipc client', () => {
   const client = fs.readFileSync(path.join(desktopDir, 'renderer-src', 'src', 'ipc', 'upiClient.ts'), 'utf8');
 
