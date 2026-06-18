@@ -1,5 +1,13 @@
 # Repository Agent Instructions
 
+## Repository Modification Commits
+
+Whenever making repository changes, create a git commit for the completed change before finishing.
+
+Keep commit frequency and scope reasonable: group tightly related edits into one commit, split
+independent fixes or features into separate commits, and do not include unrelated pre-existing
+workspace changes in a commit.
+
 ## C++ Backend Changes
 
 Whenever modifying files under `ue-backend/**/*.cpp`, `ue-backend/**/*.h`, or
