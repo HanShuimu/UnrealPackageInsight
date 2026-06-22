@@ -67,6 +67,8 @@ vi.mock('antd', async () => {
     ),
     Typography: {
       Paragraph: ({ children }: { children?: React.ReactNode }) => <pre>{children}</pre>,
+      Text: ({ children }: { children?: React.ReactNode }) => <span>{children}</span>,
+      Title: ({ children }: { children?: React.ReactNode }) => <h3>{children}</h3>,
     },
   };
 });
@@ -104,6 +106,16 @@ describe('AnalysisTabs', () => {
   beforeEach(() => {
     resizeHarness.observers.length = 0;
     vi.stubGlobal('ResizeObserver', ResizeObserverMock);
+  });
+
+  test('renders the UPI Final empty workspace tabs before an analysis result exists', () => {
+    render(<AnalysisTabs tableHeight={500} result={null} />);
+
+    expect(screen.getByText('Overview')).toBeInTheDocument();
+    expect(screen.getByText('Packages')).toBeInTheDocument();
+    expect(screen.getByText('Issues')).toBeInTheDocument();
+    expect(screen.getAllByText('Tab content region')).toHaveLength(3);
+    expect(screen.getAllByText('Replace with Pak or IoStore tab variants')).toHaveLength(3);
   });
 
   test('renders IoStore partitions and uses fallback height before pane measurement', () => {

@@ -12,6 +12,7 @@ vi.mock('antd', async () => {
     okButtonProps?: { disabled?: boolean };
     okText?: string;
     open?: boolean;
+    title?: React.ReactNode;
     onCancel?: () => void;
     onOk?: () => void;
   };
@@ -33,6 +34,7 @@ vi.mock('antd', async () => {
     Modal: (props: ModalProps) => (
       props.open ? (
         <div>
+          <h1>{props.title}</h1>
           <button type="button" onClick={props.onCancel}>Cancel</button>
           <button type="button" disabled={props.okButtonProps?.disabled} onClick={props.onOk}>
             {props.okText}
@@ -64,6 +66,8 @@ vi.mock('antd', async () => {
 
 const request: BackendSelectionRequest = {
   containerLabel: 'Global.utoc',
+  filePath: 'C:\\WORKSPACE_UE\\UnrealPackageInsight\\ue-backend',
+  probe: { platform: 'Win64' },
   candidates: [
     { id: 'ue57', label: 'Unreal 5.7' },
     { id: 'legacy', label: 'Legacy backend' },
@@ -71,16 +75,21 @@ const request: BackendSelectionRequest = {
 };
 
 describe('BackendChooserDialog', () => {
-  test('shows container context and backend ids in option labels', () => {
+  test('shows UPI Final backend selector layout and backend ids in option labels', () => {
     const onSubmit = vi.fn();
 
     render(<BackendChooserDialog request={request} onCancel={() => {}} onSubmit={onSubmit} />);
 
-    expect(screen.getByText('Global.utoc requires a backend.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Select Backend' })).toBeInTheDocument();
+    expect(screen.getByText('Backend root')).toBeInTheDocument();
+    expect(screen.getByText('C:\\WORKSPACE_UE\\UnrealPackageInsight\\ue-backend')).toBeInTheDocument();
+    expect(screen.getByText('Current platform')).toBeInTheDocument();
+    expect(screen.getByText('Win64')).toBeInTheDocument();
+    expect(screen.getByText('Available backends')).toBeInTheDocument();
     expect(screen.getByLabelText('Unreal 5.7 (ue57)')).toBeChecked();
     expect(screen.getByLabelText('Legacy backend (legacy)')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Use backend' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Use selected' }));
 
     expect(onSubmit).toHaveBeenCalledWith('ue57');
   });
@@ -96,11 +105,11 @@ describe('BackendChooserDialog', () => {
       />,
     );
 
-    expect(screen.getByText('Container requires a backend.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Select Backend' })).toBeInTheDocument();
     expect(screen.getByText('No backend candidates available.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Use backend' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Use selected' })).toBeDisabled();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Use backend' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Use selected' }));
 
     expect(onSubmit).not.toHaveBeenCalled();
   });

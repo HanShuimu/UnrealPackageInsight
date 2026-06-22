@@ -7,7 +7,7 @@ import { PackageTree } from './components/PackageTree';
 import { useAppStore } from './stores/useAppStore';
 import type { BackendInfo } from './types/upi';
 
-const { Content, Header, Sider } = Layout;
+const { Header } = Layout;
 
 function normalizeMeasuredHeight(height: number): number {
   return Math.max(0, Math.floor(height));
@@ -95,6 +95,45 @@ function backendLabel(backendInfo: BackendInfo | null): string {
   return 'Ready';
 }
 
+function backendPillLabel(backendInfo: BackendInfo | null, fallback: string): string {
+  if (!backendInfo) {
+    return fallback;
+  }
+
+  if (backendInfo.unrealVersion) {
+    return `UE ${backendInfo.unrealVersion}`;
+  }
+
+  if (Array.isArray(backendInfo.backends) && backendInfo.backends.length > 0) {
+    return backendInfo.backends[0].label;
+  }
+
+  if (backendInfo.backendName) {
+    return backendInfo.backendName;
+  }
+
+  return fallback;
+}
+
+function fileName(filePath: string): string {
+  const normalized = filePath.replace(/\\/g, '/');
+  return normalized.split('/').filter(Boolean).pop() || filePath;
+}
+
+function selectedKindLabel(filePath: string): string {
+  const lowerPath = filePath.toLowerCase();
+
+  if (lowerPath.endsWith('.pak')) {
+    return 'Pak';
+  }
+
+  if (lowerPath.endsWith('.utoc') || lowerPath.endsWith('.ucas')) {
+    return 'IoStore';
+  }
+
+  return 'Container';
+}
+
 export default function App() {
   const backendInfo = useAppStore((state) => state.backendInfo);
   const scan = useAppStore((state) => state.scan);
@@ -119,55 +158,66 @@ export default function App() {
   }, [loadBackendInfo]);
 
   const backendText = backendLabel(backendInfo);
-  const selectedLabel = selectedFilePath || 'None';
+  const backendPillText = backendPillLabel(backendInfo, backendText);
+  const packageRootLabel = scan?.root || 'No package directory opened';
+  const selectedLabel = selectedFilePath ? fileName(selectedFilePath) : '';
+  const selectedKind = selectedFilePath ? selectedKindLabel(selectedFilePath) : '';
   const shellBusy = isOpeningDirectory || isAnalyzing;
 
   return (
     <Layout className="app-shell">
       <Header className="shell-toolbar">
-        <div className="toolbar-primary">
-          <Typography.Title className="app-title" level={5}>
-            UnrealPackageInsight
-          </Typography.Title>
+        <div
+          aria-label="Package root"
+          className="package-root-field"
+          title={packageRootLabel}
+        >
+          {packageRootLabel}
+        </div>
+        <div className="toolbar-actions" aria-live="polite">
           <Button
+            className="toolbar-button"
             loading={isOpeningDirectory}
-            type="primary"
             onClick={() => void openDirectory()}
           >
             Open
           </Button>
-        </div>
-        <div className="toolbar-status" aria-live="polite">
-          <span className="status-item">
-            <Typography.Text className="status-label">Status</Typography.Text>
-            <Typography.Text
-              aria-label={`Status: ${statusText}`}
-              className="status-value"
-              strong
-              title={statusText}
-            >
-              {statusText}
-            </Typography.Text>
-          </span>
-          <span className="status-item">
-            <Typography.Text className="status-label">Backend</Typography.Text>
-            <Typography.Text
-              aria-label={`Backend: ${backendText}`}
-              className="status-value"
-              ellipsis
-              title={backendText}
-            >
-              {backendText}
-            </Typography.Text>
-          </span>
+          <Button
+            className="toolbar-button backend-toolbar-button"
+            title={dialog.backendSelection ? 'Backend selection is open' : backendText}
+            type={dialog.backendSelection ? 'primary' : 'default'}
+          >
+            Backend
+          </Button>
+          <Typography.Text
+            aria-label={`Backend: ${backendText}`}
+            className="backend-pill status-value"
+            ellipsis
+            title={backendText}
+          >
+            {backendPillText}
+          </Typography.Text>
+          <Typography.Text
+            aria-label={`Status: ${statusText}`}
+            className="status-pill status-value"
+            strong
+            title={statusText}
+          >
+            {statusText}
+          </Typography.Text>
         </div>
       </Header>
 
-      <Layout className="shell-body">
-        <Sider className="app-sidebar" theme="light" width={328}>
-          <section className="tree-region" aria-label="Package files">
-            <div className="pane-header">
-              <Typography.Text strong>Packages</Typography.Text>
+      <div className="shell-body">
+        <div className="workspace-panels">
+          <section className="workspace-pane opened-containers-pane" aria-label="Package files">
+            <div className="pane-title-block">
+              <div>
+                <Typography.Title className="pane-title" level={2}>
+                  Opened containers
+                </Typography.Title>
+                <Typography.Text className="pane-subtitle">Single selected source</Typography.Text>
+              </div>
               <Spin spinning={isOpeningDirectory} size="small" />
             </div>
             <div className="tree-content" ref={treeContentRef}>
@@ -179,31 +229,62 @@ export default function App() {
               />
             </div>
           </section>
-        </Sider>
 
-        <Content className="analysis-content">
-          <section className="analysis-header" aria-label="Analysis status">
-            <div className="analysis-title">
-              <Typography.Text className="status-label">Selected</Typography.Text>
-              <Typography.Text
-                aria-label={`Selected file: ${selectedLabel}`}
-                className="selected-value"
-                ellipsis
-                strong
-                title={selectedLabel}
-              >
-                {selectedLabel}
-              </Typography.Text>
+          <main className="analysis-content">
+            <Spin classNames={{ root: 'analysis-spinner' }} spinning={shellBusy}>
+              <div className="analysis-tabs-region" ref={analysisTabsRegionRef}>
+                <AnalysisTabs result={analysisResult} tableHeight={tableHeight} />
+              </div>
+            </Spin>
+          </main>
+
+          <section className="workspace-pane details-region" aria-label="Details">
+            <div className="pane-title-block">
+              <div>
+                <Typography.Title className="pane-title" level={2}>
+                  Details
+                </Typography.Title>
+                <Typography.Text className="pane-subtitle">
+                  {selectedFilePath ? 'Selected resource' : 'Selection-specific region'}
+                </Typography.Text>
+              </div>
             </div>
-            <Spin spinning={shellBusy} size="small" />
+            <div className="detail-stack">
+              <div className={`detail-card${selectedLabel ? ' has-content' : ''}`}>
+                {selectedLabel ? (
+                  <>
+                    <Typography.Text className="detail-label">File</Typography.Text>
+                    <Typography.Text
+                      aria-label={`Selected file: ${selectedFilePath}`}
+                      className="detail-value selected-value"
+                      ellipsis
+                      title={selectedFilePath}
+                    >
+                      {selectedLabel}
+                    </Typography.Text>
+                  </>
+                ) : null}
+              </div>
+              <div className={`detail-card${analysisResult ? ' has-content' : ''}`}>
+                {analysisResult ? (
+                  <>
+                    <Typography.Text className="detail-label">Analysis</Typography.Text>
+                    <Typography.Text className="detail-value" ellipsis title={statusText}>
+                      {statusText}
+                    </Typography.Text>
+                  </>
+                ) : null}
+              </div>
+              <div className="detail-card" />
+            </div>
+            {selectedKind ? (
+              <div className="details-footer">
+                <Typography.Text className="container-kind-pill" strong>{selectedKind}</Typography.Text>
+              </div>
+            ) : null}
           </section>
-          <Spin classNames={{ root: 'analysis-spinner' }} spinning={shellBusy}>
-            <div className="analysis-tabs-region" ref={analysisTabsRegionRef}>
-              <AnalysisTabs result={analysisResult} tableHeight={tableHeight} />
-            </div>
-          </Spin>
-        </Content>
-      </Layout>
+        </div>
+      </div>
 
       <AesKeyDialog
         loading={isAnalyzing}

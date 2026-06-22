@@ -1,4 +1,4 @@
-import { Descriptions, Empty, Tabs, Typography } from 'antd';
+import { Empty, Tabs, Typography } from 'antd';
 import { useCallback, useEffect, useMemo, useState, type RefCallback } from 'react';
 import type { AnalysisResult, Issue } from '../types/upi';
 import { buildAnalysisTabs, type AnalysisTabModel } from '../utils/analysisTabs';
@@ -132,7 +132,29 @@ function renderOverview(result: AnalysisResult) {
     return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No summary to show." />;
   }
 
-  return <Descriptions bordered column={1} items={items} size="small" />;
+  return (
+    <div className="summary-grid">
+      {items.map((item) => (
+        <div className="summary-card" key={item.key}>
+          <Typography.Text className="summary-label">{item.label}</Typography.Text>
+          <Typography.Text className="summary-value">{item.children}</Typography.Text>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function renderEmptyWorkspace() {
+  return (
+    <div className="empty-tab-region">
+      <Typography.Title className="empty-tab-title" level={3}>
+        Tab content region
+      </Typography.Title>
+      <Typography.Text className="empty-tab-subtitle">
+        Replace with Pak or IoStore tab variants
+      </Typography.Text>
+    </div>
+  );
 }
 
 function renderTabContent(tab: AnalysisTabModel, result: AnalysisResult, height: number) {
@@ -157,7 +179,19 @@ function renderTabContent(tab: AnalysisTabModel, result: AnalysisResult, height:
 export function AnalysisTabs({ result, tableHeight }: AnalysisTabsProps) {
   const tabModels = useMemo(() => buildAnalysisTabs(result), [result]);
 
-  if (!result || tabModels.length === 0) {
+  if (!result) {
+    return (
+      <Tabs
+        items={[
+          { key: 'overview', label: 'Overview', children: renderEmptyWorkspace() },
+          { key: 'packages', label: 'Packages', children: renderEmptyWorkspace() },
+          { key: 'issues', label: 'Issues', children: renderEmptyWorkspace() },
+        ]}
+      />
+    );
+  }
+
+  if (tabModels.length === 0) {
     return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No analysis result to show." />;
   }
 

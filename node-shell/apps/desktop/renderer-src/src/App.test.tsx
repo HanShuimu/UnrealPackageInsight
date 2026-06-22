@@ -133,9 +133,46 @@ describe('App', () => {
     render(<App />);
 
     expect(screen.getByRole('button', { name: 'Open' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Backend' })).toBeInTheDocument();
     expect(screen.getByText('Ready')).toBeInTheDocument();
     expect(screen.getByText(/TestBackend/)).toBeInTheDocument();
-    expect(screen.getByText('None')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Opened containers' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Details' })).toBeInTheDocument();
+    expect(screen.getByText('Selection-specific region')).toBeInTheDocument();
+  });
+
+  test('renders the UPI Final three-pane workspace shell', () => {
+    mockHarness.state = createMockState({
+      scan: {
+        root: 'C:\\WORKSPACE_RA\\RATrunk\\LocalBuilds\\Game\\Windows',
+        files: [{ path: 'C:\\Paks\\pakchunk0-Windows.pak', kind: 'pak' }],
+        tree: {
+          name: 'Windows',
+          kind: 'directory',
+          children: [
+            {
+              name: 'Content',
+              kind: 'directory',
+              children: [
+                { name: 'pakchunk0-Windows.pak', path: 'C:\\Paks\\pakchunk0-Windows.pak', kind: 'pak' },
+              ],
+            },
+          ],
+        },
+      },
+      selectedFilePath: 'C:\\Paks\\pakchunk0-Windows.pak',
+    });
+
+    const { container } = render(<App />);
+
+    expect(screen.getByLabelText('Package root')).toHaveTextContent(
+      'C:\\WORKSPACE_RA\\RATrunk\\LocalBuilds\\Game\\Windows',
+    );
+    expect(container.querySelector('.workspace-panels')).toBeInTheDocument();
+    expect(screen.getByText('Single selected source')).toBeInTheDocument();
+    expect(screen.getByText('Selected resource')).toBeInTheDocument();
+    expect(screen.getByText('pakchunk0-Windows.pak')).toBeInTheDocument();
+    expect(screen.getByText('Pak')).toBeInTheDocument();
   });
 
   test('summarizes backend registry info in the shell header', () => {
