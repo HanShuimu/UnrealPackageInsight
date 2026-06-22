@@ -20,6 +20,12 @@ const {
   ipcMain,
 } = typeof electron === 'object' && electron !== null ? electron : {};
 
+const SMOKE_DISABLE_HARDWARE_ACCELERATION_ARG = '--upi-smoke-disable-hardware-acceleration';
+
+if (app && process.argv.includes(SMOKE_DISABLE_HARDWARE_ACCELERATION_ARG)) {
+  app.disableHardwareAcceleration();
+}
+
 const PACKAGE_NOT_OPEN_RESPONSE = {
   status: 'Error',
   issues: [{
