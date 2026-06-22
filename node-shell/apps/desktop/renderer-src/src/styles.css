@@ -342,6 +342,26 @@ body {
   background: #eef7f5;
 }
 
+.analysis-table-pane .package-path-column,
+.analysis-table-pane .package-path-cell {
+  white-space: nowrap;
+}
+
+.analysis-table-pane .package-path-cell {
+  display: inline-block;
+  min-width: max-content;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.analysis-table-pane .ant-table-cell-fix-left.package-path-column {
+  background: #ffffff;
+}
+
+.analysis-table-pane .ant-table-thead .ant-table-cell-fix-left.package-path-column {
+  background: #eef3f8;
+}
+
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(156px, 1fr));
