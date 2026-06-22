@@ -18,6 +18,20 @@ function delay(ms) {
   });
 }
 
+function withTimeout(promise, timeoutMs, message) {
+  let timer = null;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error(message));
+      }, timeoutMs);
+    }),
+  ]).finally(() => {
+    clearTimeout(timer);
+  });
+}
+
 function readJson(url) {
   return new Promise((resolve, reject) => {
     const request = http.get(url, (response) => {
@@ -43,9 +57,34 @@ function readJson(url) {
 
     request.on('error', reject);
     request.setTimeout(1000, () => {
-      request.destroy(new Error(`Timed out requesting ${url}`));
+      const error = new Error(`Timed out requesting ${url}`);
+      error.code = 'ETIMEDOUT';
+      request.destroy(error);
     });
   });
+}
+
+function isPortUnavailableError(error) {
+  return error?.code === 'ECONNREFUSED' || error?.code === 'ECONNRESET';
+}
+
+async function assertDevToolsPortAvailable() {
+  try {
+    const targets = await readJson(`http://127.0.0.1:${DEVTOOLS_PORT}/json`);
+    const targetSummary = Array.isArray(targets)
+      ? targets.map((target) => target.title || target.url || target.type).filter(Boolean).join(', ')
+      : 'unknown response';
+    throw new Error(
+      `DevTools port ${DEVTOOLS_PORT} is already serving targets (${targetSummary}). `
+      + 'Stop the existing process before running the Electron GUI smoke test.',
+    );
+  } catch (error) {
+    if (isPortUnavailableError(error)) {
+      return;
+    }
+
+    throw error;
+  }
 }
 
 async function findRendererTarget({ stderr, deadlineMs = 15000 }) {
@@ -79,6 +118,13 @@ function createCdpClient(webSocketDebuggerUrl) {
   const pending = new Map();
   const listeners = new Map();
 
+  function rejectPending(error) {
+    for (const { reject } of pending.values()) {
+      reject(error);
+    }
+    pending.clear();
+  }
+
   socket.addEventListener('message', (event) => {
     const message = JSON.parse(event.data);
 
@@ -102,13 +148,18 @@ function createCdpClient(webSocketDebuggerUrl) {
   });
 
   socket.addEventListener('error', (event) => {
-    for (const { reject } of pending.values()) {
-      reject(event.error || new Error('CDP WebSocket error'));
-    }
-    pending.clear();
+    rejectPending(event.error || new Error('CDP WebSocket error'));
+  });
+
+  socket.addEventListener('close', () => {
+    rejectPending(new Error('CDP WebSocket closed'));
   });
 
   function send(method, params = {}) {
+    if (socket.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error(`Cannot send ${method}; CDP WebSocket is not open`));
+    }
+
     const id = nextId;
     nextId += 1;
 
@@ -126,7 +177,9 @@ function createCdpClient(webSocketDebuggerUrl) {
 
   return {
     close() {
-      socket.close();
+      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+        socket.close();
+      }
     },
     on,
     send,
@@ -159,19 +212,55 @@ async function evaluate(client, expression) {
 
 async function waitFor(client, expression, { timeoutMs = 10000, intervalMs = 100 } = {}) {
   const deadline = Date.now() + timeoutMs;
+  let lastError = null;
 
   while (Date.now() < deadline) {
-    if (await evaluate(client, expression)) {
-      return;
+    try {
+      if (await evaluate(client, expression)) {
+        return;
+      }
+    } catch (error) {
+      lastError = error;
     }
 
     await delay(intervalMs);
   }
 
-  throw new Error(`Timed out waiting for expression: ${expression}`);
+  const lastErrorText = lastError ? `\nLast evaluation error: ${lastError.message}` : '';
+  throw new Error(`Timed out waiting for expression: ${expression}${lastErrorText}`);
+}
+
+function createProcessCloseWaiter(childProcess) {
+  let closed = false;
+  childProcess.once('close', () => {
+    closed = true;
+  });
+
+  return function waitForProcessClose(timeoutMs) {
+    if (closed || childProcess.exitCode !== null || childProcess.signalCode !== null) {
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        childProcess.off('close', onClose);
+        reject(new Error(`Timed out waiting for Electron process ${childProcess.pid} to close`));
+      }, timeoutMs);
+
+      function onClose() {
+        clearTimeout(timer);
+        closed = true;
+        resolve();
+      }
+
+      childProcess.once('close', onClose);
+    });
+  };
 }
 
 test('Electron GUI launches, mounts the renderer, and exposes preload API', async (t) => {
+  await assertDevToolsPortAvailable();
+
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-electron-smoke-'));
   const stderrChunks = [];
   const electronProcess = spawn(electronPath, [
@@ -184,6 +273,7 @@ test('Electron GUI launches, mounts the renderer, and exposes preload API', asyn
     windowsHide: true,
   });
   let client = null;
+  const waitForElectronClose = createProcessCloseWaiter(electronProcess);
 
   const stderr = () => stderrChunks.join('').slice(-8000);
 
@@ -193,14 +283,29 @@ test('Electron GUI launches, mounts the renderer, and exposes preload API', asyn
 
   t.after(async () => {
     if (client) {
+      try {
+        await withTimeout(
+          client.send('Browser.close'),
+          1000,
+          'Timed out requesting Electron shutdown through CDP',
+        );
+      } catch {
+        // The renderer may already be gone; process termination below is the fallback.
+      }
       client.close();
     }
 
-    if (!electronProcess.killed) {
+    try {
+      await waitForElectronClose(3000);
+    } catch {
       electronProcess.kill();
+      try {
+        await waitForElectronClose(3000);
+      } catch {
+        // Let the test failure surface while still attempting temp-dir cleanup.
+      }
     }
 
-    await delay(250);
     fs.rmSync(userDataDir, { force: true, recursive: true });
   });
 
@@ -219,8 +324,15 @@ test('Electron GUI launches, mounts the renderer, and exposes preload API', asyn
     exceptions.push(params.exceptionDetails?.text || 'Runtime.exceptionThrown');
   });
   await client.send('Runtime.enable');
+  await client.send('Page.enable');
 
-  await waitFor(client, 'document.querySelector("#root")?.textContent?.trim().length > 0');
+  await evaluate(client, 'window.__UPI_SMOKE_RELOAD_MARKER__ = true');
+  await client.send('Page.reload', { ignoreCache: true });
+  await waitFor(client, (
+    'window.__UPI_SMOKE_RELOAD_MARKER__ === undefined'
+    + ' && document.readyState === "complete"'
+    + ' && document.querySelector("#root")?.textContent?.trim().length > 0'
+  ));
 
   const visibleText = await evaluate(client, 'document.body.innerText');
   for (const expectedText of ['Overview', 'Packages', 'Issues', 'Opened containers', 'Details']) {
