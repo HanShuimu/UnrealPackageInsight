@@ -1,26 +1,17 @@
 import { describe, expect, test } from 'vitest';
+import type { AnalysisResult } from '../types/upi';
 import { buildAnalysisTabs } from './analysisTabs';
 
+const expectedTabIds = ['overview', 'packages', 'issues'];
+
 describe('buildAnalysisTabs', () => {
-  test('builds IoStore tabs when chunks are present', () => {
-    expect(buildAnalysisTabs({ chunks: [], packages: [], compressedBlocks: [], issues: [] }).map((tab) => tab.id))
-      .toEqual(['overview', 'packages', 'chunks', 'blocks', 'issues']);
-  });
-
-  test('adds a partitions tab for IoStore results with partitions', () => {
-    expect(
-      buildAnalysisTabs({
-        chunks: [],
-        packages: [],
-        compressedBlocks: [],
-        partitions: [],
-        issues: [],
-      }).map((tab) => tab.id),
-    ).toEqual(['overview', 'packages', 'chunks', 'partitions', 'blocks', 'issues']);
-  });
-
-  test('builds Pak tabs when packages and compressed blocks are present without chunks', () => {
-    expect(buildAnalysisTabs({ packages: [], compressedBlocks: [], issues: [] }).map((tab) => tab.id))
-      .toEqual(['overview', 'packages', 'blocks', 'issues']);
+  test.each([
+    ['null result', null],
+    ['Pak-like result', { packages: [], compressedBlocks: [], issues: [] }],
+    ['IoStore-like result', { chunks: [], packages: [], compressedBlocks: [], partitions: [], issues: [] }],
+    ['issue-only result', { issues: [{ severity: 'error', message: 'Broken' }] }],
+    ['unknown backend-field result', { customBackendField: [{ id: 1 }] }],
+  ] satisfies Array<[string, AnalysisResult | null]>)('returns the fixed tab contract for %s', (_name, result) => {
+    expect(buildAnalysisTabs(result).map((tab) => tab.id)).toEqual(expectedTabIds);
   });
 });
