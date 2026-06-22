@@ -383,7 +383,7 @@ test('Electron GUI launches, mounts the renderer, and exposes preload API', { re
   await client.send('Page.addScriptToEvaluateOnNewDocument', {
     source: 'window.__UPI_SMOKE_RELOAD_MARKER__ = true;',
   });
-  await client.send('Page.reload', { ignoreCache: true });
+  await evaluate(client, 'setTimeout(() => window.location.reload(), 0); true');
 
   await waitFor(client, (
     'window.__UPI_SMOKE_RELOAD_MARKER__ === true'
