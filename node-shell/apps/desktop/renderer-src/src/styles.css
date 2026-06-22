@@ -416,61 +416,39 @@ body {
   position: relative;
 }
 
-.detail-stack {
+.details-list {
   display: flex;
   flex-direction: column;
-  gap: 28px;
-  padding: 4px 16px 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0 16px 16px;
+  padding-top: 4px;
+  overflow: auto;
+  border-top: 1px solid #d8e0e9;
 }
 
-.detail-card {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  min-height: 88px;
-  padding: 0 14px;
-  background: var(--upi-panel-soft);
-  border: 1px solid var(--upi-line-soft);
-  border-radius: 6px;
+.detail-row {
+  display: grid;
+  grid-template-columns: minmax(82px, 0.42fr) minmax(0, 1fr);
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--upi-line-soft);
 }
 
-.detail-card:first-child {
-  min-height: 138px;
-}
-
-.detail-card.has-content {
-  align-items: flex-start;
-}
-
-.detail-label.ant-typography {
-  margin-bottom: 10px;
+.detail-row-label.ant-typography {
   color: var(--upi-muted);
   font-size: 12px;
   font-weight: 700;
+  line-height: 18px;
 }
 
-.detail-value.ant-typography {
-  max-width: 100%;
+.detail-row-value.ant-typography {
+  min-width: 0;
   color: var(--upi-text);
   font-size: 13px;
   font-weight: 700;
-}
-
-.details-footer {
-  margin-top: auto;
-  padding: 0 16px 212px;
-}
-
-.container-kind-pill.ant-typography {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 94px;
-  height: 30px;
-  color: #ffffff;
-  font-size: 12px;
-  background: var(--upi-accent);
-  border-radius: 6px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
 }
 
 .backend-selector-modal .ant-modal-content {

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState, type RefCallback } from 'react';
 import { AesKeyDialog } from './components/AesKeyDialog';
 import { AnalysisTabs } from './components/AnalysisTabs';
 import { BackendChooserDialog } from './components/BackendChooserDialog';
+import { DetailsPane } from './components/DetailsPane';
 import { PackageTree } from './components/PackageTree';
 import { useAppStore } from './stores/useAppStore';
 import type { BackendInfo } from './types/upi';
@@ -116,25 +117,6 @@ function backendPillLabel(backendInfo: BackendInfo | null, fallback: string): st
   return fallback;
 }
 
-function fileName(filePath: string): string {
-  const normalized = filePath.replace(/\\/g, '/');
-  return normalized.split('/').filter(Boolean).pop() || filePath;
-}
-
-function selectedKindLabel(filePath: string): string {
-  const lowerPath = filePath.toLowerCase();
-
-  if (lowerPath.endsWith('.pak')) {
-    return 'Pak';
-  }
-
-  if (lowerPath.endsWith('.utoc') || lowerPath.endsWith('.ucas')) {
-    return 'IoStore';
-  }
-
-  return 'Container';
-}
-
 export default function App() {
   const backendInfo = useAppStore((state) => state.backendInfo);
   const scan = useAppStore((state) => state.scan);
@@ -159,11 +141,13 @@ export default function App() {
     void loadBackendInfo();
   }, [loadBackendInfo]);
 
+  useEffect(() => {
+    setDetailSelection(null);
+  }, [analysisResult, selectedFilePath]);
+
   const backendText = backendLabel(backendInfo);
   const backendPillText = backendPillLabel(backendInfo, backendText);
   const packageRootLabel = scan?.root || 'No package directory opened';
-  const selectedLabel = selectedFilePath ? fileName(selectedFilePath) : '';
-  const selectedKind = selectedFilePath ? selectedKindLabel(selectedFilePath) : '';
   const selectedPackageId = detailSelection?.kind === 'package' ? detailSelection.row.id : '';
   const shellBusy = isOpeningDirectory || isAnalyzing;
 
@@ -246,51 +230,7 @@ export default function App() {
             </Spin>
           </main>
 
-          <section className="workspace-pane details-region" aria-label="Details">
-            <div className="pane-title-block">
-              <div>
-                <Typography.Title className="pane-title" level={2}>
-                  Details
-                </Typography.Title>
-                <Typography.Text className="pane-subtitle">
-                  {selectedFilePath ? 'Selected resource' : 'Selection-specific region'}
-                </Typography.Text>
-              </div>
-            </div>
-            <div className="detail-stack">
-              <div className={`detail-card${selectedLabel ? ' has-content' : ''}`}>
-                {selectedLabel ? (
-                  <>
-                    <Typography.Text className="detail-label">File</Typography.Text>
-                    <Typography.Text
-                      aria-label={`Selected file: ${selectedFilePath}`}
-                      className="detail-value selected-value"
-                      ellipsis
-                      title={selectedFilePath}
-                    >
-                      {selectedLabel}
-                    </Typography.Text>
-                  </>
-                ) : null}
-              </div>
-              <div className={`detail-card${analysisResult ? ' has-content' : ''}`}>
-                {analysisResult ? (
-                  <>
-                    <Typography.Text className="detail-label">Analysis</Typography.Text>
-                    <Typography.Text className="detail-value" ellipsis title={statusText}>
-                      {statusText}
-                    </Typography.Text>
-                  </>
-                ) : null}
-              </div>
-              <div className="detail-card" />
-            </div>
-            {selectedKind ? (
-              <div className="details-footer">
-                <Typography.Text className="container-kind-pill" strong>{selectedKind}</Typography.Text>
-              </div>
-            ) : null}
-          </section>
+          <DetailsPane selection={detailSelection} />
         </div>
       </div>
 

@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import App from './App';
 import type { AppState } from './stores/appStore';
+import type { DetailSelection } from './utils/analysisViewModel';
 
 type ObserverRecord = {
   callback: ResizeObserverCallback;
@@ -49,8 +50,36 @@ vi.mock('./stores/useAppStore', () => ({
 }));
 
 vi.mock('./components/AnalysisTabs', () => ({
-  AnalysisTabs: ({ tableHeight }: { tableHeight: number }) => (
-    <div data-testid="analysis-tabs" data-height={tableHeight} />
+  AnalysisTabs: ({
+    onDetailsSelectionChange,
+    selectedPackageId,
+    tableHeight,
+  }: {
+    onDetailsSelectionChange(selection: DetailSelection | null): void;
+    selectedPackageId: string;
+    tableHeight: number;
+  }) => (
+    <div
+      data-selected-package-id={selectedPackageId}
+      data-testid="analysis-tabs"
+      data-height={tableHeight}
+    >
+      <button
+        type="button"
+        onClick={() => onDetailsSelectionChange({
+          kind: 'package',
+          row: {
+            id: '../../../Engine/Config/Base.ini',
+            fullPath: '../../../Engine/Config/Base.ini',
+            fileName: 'Base.ini',
+            physicalOrder: 0,
+            source: {},
+          },
+        })}
+      >
+        Select package detail
+      </button>
+    </div>
   ),
 }));
 
@@ -138,7 +167,8 @@ describe('App', () => {
     expect(screen.getByText(/TestBackend/)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Opened containers' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Details' })).toBeInTheDocument();
-    expect(screen.getByText('Selection-specific region')).toBeInTheDocument();
+    expect(screen.queryByText('Selection-specific region')).not.toBeInTheDocument();
+    expect(screen.queryByText('Selected resource')).not.toBeInTheDocument();
   });
 
   test('renders the UPI Final three-pane workspace shell', () => {
@@ -170,9 +200,81 @@ describe('App', () => {
     );
     expect(container.querySelector('.workspace-panels')).toBeInTheDocument();
     expect(screen.getByText('Single selected source')).toBeInTheDocument();
-    expect(screen.getByText('Selected resource')).toBeInTheDocument();
-    expect(screen.getByText('pakchunk0-Windows.pak')).toBeInTheDocument();
-    expect(screen.getByText('Pak')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Details' }).textContent).toBe('Details');
+    expect(screen.queryByText('Selected resource')).not.toBeInTheDocument();
+    expect(screen.queryByText('pakchunk0-Windows.pak')).not.toBeInTheDocument();
+    expect(screen.queryByText('Pak')).not.toBeInTheDocument();
+  });
+
+  test('keeps the details region empty until a result row is selected', () => {
+    mockHarness.state = createMockState({
+      analysisResult: {
+        overview: { packageCount: 1 },
+        packages: [{ packagePath: '../../../Engine/Config/Base.ini', order: 0 }],
+      },
+      selectedFilePath: 'C:\\Paks\\pakchunk0-Windows.pak',
+    });
+
+    render(<App />);
+
+    const details = screen.getByRole('region', { name: 'Details' });
+    expect(details.textContent).toBe('Details');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select package detail' }));
+
+    expect(details).toHaveTextContent('../../../Engine/Config/Base.ini');
+    expect(screen.getByTestId('analysis-tabs')).toHaveAttribute(
+      'data-selected-package-id',
+      '../../../Engine/Config/Base.ini',
+    );
+  });
+
+  test('clears selected details when the selected file or analysis result changes', async () => {
+    const firstResult = {
+      overview: { packageCount: 1 },
+      packages: [{ packagePath: '../../../Engine/Config/Base.ini', order: 0 }],
+    };
+    mockHarness.state = createMockState({
+      analysisResult: firstResult,
+      selectedFilePath: 'C:\\Paks\\pakchunk0-Windows.pak',
+    });
+
+    const { rerender } = render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select package detail' }));
+    expect(screen.getByRole('region', { name: 'Details' })).toHaveTextContent(
+      '../../../Engine/Config/Base.ini',
+    );
+
+    mockHarness.state = createMockState({
+      analysisResult: firstResult,
+      selectedFilePath: 'C:\\Paks\\pakchunk1-Windows.pak',
+    });
+    rerender(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Details' }).textContent).toBe('Details');
+      expect(screen.getByTestId('analysis-tabs')).toHaveAttribute('data-selected-package-id', '');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select package detail' }));
+    expect(screen.getByRole('region', { name: 'Details' })).toHaveTextContent(
+      '../../../Engine/Config/Base.ini',
+    );
+
+    mockHarness.state = createMockState({
+      analysisResult: {
+        overview: { packageCount: 1 },
+        packages: [{ packagePath: '../../../Game/Config/Default.ini', order: 1 }],
+      },
+      selectedFilePath: 'C:\\Paks\\pakchunk1-Windows.pak',
+    });
+    rerender(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Details' }).textContent).toBe('Details');
+      expect(screen.getByTestId('analysis-tabs')).toHaveAttribute('data-selected-package-id', '');
+    });
   });
 
   test('summarizes backend registry info in the shell header', () => {
@@ -232,8 +334,6 @@ describe('App', () => {
     expect(screen.getByLabelText(
       /Backend: VeryLongBackendNameThatShouldNotStretchTheToolbar/,
     )).toHaveClass('status-value');
-    expect(screen.getByLabelText(
-      'Selected file: C:\\Extremely\\Long\\Path\\That\\Should\\Be\\Ellipsized\\Container.pak',
-    )).toHaveClass('selected-value');
+    expect(screen.getByRole('region', { name: 'Details' }).textContent).toBe('Details');
   });
 });
