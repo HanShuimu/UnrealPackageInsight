@@ -8,9 +8,7 @@ type ContractAnalysisTabModel =
   | { id: 'packages'; label: 'Packages'; kind: 'table'; field: 'packages' }
   | { id: 'issues'; label: 'Issues'; kind: 'issues' };
 
-export type AnalysisTabModel =
-  | ContractAnalysisTabModel
-  | { id: 'raw'; label: 'Raw'; kind: 'raw' };
+export type AnalysisTabModel = ContractAnalysisTabModel;
 
 export type OverviewCard = {
   id: 'packages' | 'totalSize' | 'compressedSize' | 'issues';
@@ -86,7 +84,7 @@ function toFiniteNumber(value: unknown): number | undefined {
 }
 
 function firstPathValue(record: Record<string, unknown>): string | undefined {
-  const value = record.packagePath ?? record.path ?? record.fullPath ?? record.relativePath ?? record.name;
+  const value = record.packagePath || record.path || record.fullPath || record.relativePath || record.name;
 
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
 }
@@ -199,7 +197,7 @@ export function buildPackageRows(result: AnalysisResult | null): PackageRow[] {
     const type = typeFromFileName(fileName);
     const size = toFiniteNumber(packageEntry.size ?? packageEntry.diskSize);
     const compressedSize = toFiniteNumber(packageEntry.compressedSize);
-    const physicalOrder = toFiniteNumber(packageEntry.order ?? packageEntry.physicalOrder);
+    const physicalOrder = toFiniteNumber(packageEntry.order || packageEntry.physicalOrder);
     const row: PackageRowDraft = {
       fullPath,
       fileName,

@@ -9,10 +9,18 @@ import {
   buildPackageTree,
   comparePackageFileName,
   comparePackageOrder,
+  type AnalysisTabModel,
   type PackageRow,
 } from './analysisViewModel';
 
 const expectedTabIds = ['overview', 'packages', 'issues'];
+
+const analysisTabContractIds: AnalysisTabModel['id'][] = ['overview', 'packages', 'issues'];
+void analysisTabContractIds;
+
+// @ts-expect-error raw is not part of the public view-model tab contract.
+const rawTabIsNotAnalysisTabModel: AnalysisTabModel = { id: 'raw', label: 'Raw', kind: 'raw' };
+void rawTabIsNotAnalysisTabModel;
 
 const pakResult: AnalysisResult = {
   overview: { totalSize: 4300, packageCount: 2, unusedField: undefined },
@@ -107,6 +115,33 @@ describe('buildPackageRows', () => {
       expect.objectContaining({ id: 'C:/Game/Bar.uasset', fullPath: 'C:/Game/Bar.uasset', fileName: 'Bar.uasset', size: 1 }),
       expect.objectContaining({ id: 'C:/Game/Foo.uasset', fullPath: 'C:/Game/Foo.uasset', fileName: 'Foo.uasset', size: 10, compressedSize: 5, physicalOrder: 3 }),
       expect.objectContaining({ id: 'C:/Game/Foo.uasset#2', fullPath: 'C:/Game/Foo.uasset', fileName: 'Foo.uasset', size: 12, physicalOrder: 4 }),
+    ]);
+  });
+
+  test('falls back to the next path field when packagePath is blank', () => {
+    expect(buildPackageRows({
+      packages: [
+        { packagePath: '', path: '../../../Game/Fallback.uasset' },
+      ],
+    })).toEqual([
+      expect.objectContaining({
+        id: '../../../Game/Fallback.uasset',
+        fullPath: '../../../Game/Fallback.uasset',
+        fileName: 'Fallback.uasset',
+      }),
+    ]);
+  });
+
+  test('falls back to physicalOrder when order is blank', () => {
+    expect(buildPackageRows({
+      packages: [
+        { packagePath: '../../../Game/Fallback.uasset', order: '', physicalOrder: 4 },
+      ],
+    })).toEqual([
+      expect.objectContaining({
+        id: '../../../Game/Fallback.uasset',
+        physicalOrder: 4,
+      }),
     ]);
   });
 });
