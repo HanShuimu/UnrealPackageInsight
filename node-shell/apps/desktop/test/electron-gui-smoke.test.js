@@ -282,6 +282,8 @@ test('Electron GUI launches, mounts the renderer, and exposes preload API', asyn
   });
 
   t.after(async () => {
+    let cleanupError = null;
+
     if (client) {
       try {
         await withTimeout(
@@ -301,12 +303,20 @@ test('Electron GUI launches, mounts the renderer, and exposes preload API', asyn
       electronProcess.kill();
       try {
         await waitForElectronClose(3000);
-      } catch {
-        // Let the test failure surface while still attempting temp-dir cleanup.
+      } catch (error) {
+        cleanupError = error;
       }
     }
 
-    fs.rmSync(userDataDir, { force: true, recursive: true });
+    try {
+      fs.rmSync(userDataDir, { force: true, recursive: true });
+    } catch (error) {
+      cleanupError ||= error;
+    }
+
+    if (cleanupError) {
+      throw cleanupError;
+    }
   });
 
   electronProcess.once('exit', (code, signal) => {
