@@ -129,7 +129,7 @@ body {
 
 .workspace-panels {
   display: grid;
-  grid-template-columns: minmax(236px, 304px) minmax(0, 1fr) minmax(236px, 304px);
+  grid-template-columns: var(--opened-pane-width, 304px) minmax(0, 1fr) minmax(236px, 304px);
   gap: 24px;
   box-sizing: border-box;
   height: 100%;
@@ -638,7 +638,7 @@ body {
   }
 
   .workspace-panels {
-    grid-template-columns: minmax(204px, 260px) minmax(0, 1fr) minmax(190px, 236px);
+    grid-template-columns: minmax(204px, min(var(--opened-pane-width, 260px), 260px)) minmax(0, 1fr) minmax(190px, 236px);
     gap: 16px;
     padding: 16px;
   }

@@ -158,17 +158,17 @@ function setViewportWidth(width: number): void {
   });
 }
 
-function openedPaneGridWidth(container: HTMLElement): number {
+function openedPaneStyleWidth(container: HTMLElement): number {
   const panels = container.querySelector('.workspace-panels') as HTMLElement | null;
 
   if (!panels) {
     throw new Error('Missing workspace panels');
   }
 
-  const match = /^(\d+)px/.exec(panels.style.gridTemplateColumns);
+  const match = /^(\d+)px$/.exec(panels.style.getPropertyValue('--opened-pane-width').trim());
 
   if (!match) {
-    throw new Error(`Missing pixel left column: ${panels.style.gridTemplateColumns}`);
+    throw new Error(`Missing opened pane CSS variable: ${panels.getAttribute('style') || ''}`);
   }
 
   return Number(match[1]);
@@ -386,28 +386,66 @@ describe('App', () => {
       const { container } = render(<App />);
       const panels = container.querySelector('.workspace-panels') as HTMLElement;
 
-      expect(openedPaneGridWidth(container)).toBeGreaterThan(304);
-      expect(panels.style.gridTemplateColumns).toMatch(/^\d+px minmax\(0, 1fr\) minmax\(236px, 304px\)$/);
+      expect(openedPaneStyleWidth(container)).toBeGreaterThan(304);
+      expect(panels.style.gridTemplateColumns).toBe('');
 
       const separator = screen.getByRole('separator', { name: 'Resize opened containers' });
 
       fireEvent.pointerDown(separator, { clientX: 576, pointerId: 1 });
       fireEvent.pointerMove(window, { clientX: 360, pointerId: 1 });
 
-      expect(openedPaneGridWidth(container)).toBe(336);
+      expect(openedPaneStyleWidth(container)).toBe(336);
 
       fireEvent.pointerMove(window, { clientX: 1000, pointerId: 1 });
 
-      expect(openedPaneGridWidth(container)).toBe(576);
+      expect(openedPaneStyleWidth(container)).toBe(576);
 
       fireEvent.pointerUp(window, { pointerId: 1 });
       fireEvent.pointerMove(window, { clientX: 300, pointerId: 1 });
 
-      expect(openedPaneGridWidth(container)).toBe(576);
+      expect(openedPaneStyleWidth(container)).toBe(576);
       expect(setItemSpy).not.toHaveBeenCalled();
     } finally {
       setItemSpy.mockRestore();
     }
+  });
+
+  test('resizes the opened containers pane from the separator keyboard controls', () => {
+    setViewportWidth(1440);
+    const { container } = render(<App />);
+    const separator = screen.getByRole('separator', { name: 'Resize opened containers' });
+
+    expect(separator).toHaveAttribute('aria-valuemax', '576');
+    expect(openedPaneStyleWidth(container)).toBe(304);
+
+    fireEvent.keyDown(separator, { key: 'ArrowRight' });
+
+    expect(openedPaneStyleWidth(container)).toBe(320);
+    expect(separator).toHaveAttribute('aria-valuenow', '320');
+
+    fireEvent.keyDown(separator, { key: 'Home' });
+
+    expect(openedPaneStyleWidth(container)).toBe(236);
+
+    fireEvent.keyDown(separator, { key: 'End' });
+
+    expect(openedPaneStyleWidth(container)).toBe(576);
+  });
+
+  test('stops drag resizing when the pointer drag is canceled', () => {
+    setViewportWidth(1440);
+    const { container } = render(<App />);
+    const separator = screen.getByRole('separator', { name: 'Resize opened containers' });
+
+    fireEvent.pointerDown(separator, { clientX: 576, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 360, pointerId: 1 });
+
+    expect(openedPaneStyleWidth(container)).toBe(336);
+
+    fireEvent.pointerCancel(window, { pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 1000, pointerId: 1 });
+
+    expect(openedPaneStyleWidth(container)).toBe(336);
   });
 
   test('exposes constrained labels for long shell values', () => {

@@ -4,6 +4,8 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type RefCallback,
 } from 'react';
@@ -16,6 +18,7 @@ import { useAppStore } from './stores/useAppStore';
 import type { BackendInfo } from './types/upi';
 import type { DetailSelection } from './utils/analysisViewModel';
 import {
+  OPENED_CONTAINERS_MAX_WIDTH,
   OPENED_CONTAINERS_MIN_WIDTH,
   clampOpenedContainersWidth,
   estimateOpenedContainersWidth,
@@ -23,6 +26,11 @@ import {
 
 const { Header } = Layout;
 const SHELL_HORIZONTAL_PADDING = 24;
+const OPENED_PANE_KEYBOARD_STEP = 16;
+
+type OpenedPaneStyle = CSSProperties & {
+  '--opened-pane-width': string;
+};
 
 function getViewportWidth(): number {
   if (typeof window === 'undefined') {
@@ -30,6 +38,14 @@ function getViewportWidth(): number {
   }
 
   return window.innerWidth || 1440;
+}
+
+function openedPaneStyle(width: number): OpenedPaneStyle {
+  return { '--opened-pane-width': `${width}px` };
+}
+
+function openedPaneMaxWidth(): number {
+  return clampOpenedContainersWidth(OPENED_CONTAINERS_MAX_WIDTH, getViewportWidth());
 }
 
 function normalizeMeasuredHeight(height: number): number {
@@ -196,6 +212,8 @@ export default function App() {
     function removeDragListeners(): void {
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerCancel);
+      window.removeEventListener('blur', handleWindowBlur);
       openedPaneDragCleanupRef.current = null;
     }
 
@@ -203,9 +221,50 @@ export default function App() {
       removeDragListeners();
     }
 
+    function handlePointerCancel(): void {
+      removeDragListeners();
+    }
+
+    function handleWindowBlur(): void {
+      removeDragListeners();
+    }
+
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerCancel);
+    window.addEventListener('blur', handleWindowBlur);
     openedPaneDragCleanupRef.current = removeDragListeners;
+  }, []);
+
+  const handleOpenedPaneKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      setOpenedPaneWidth((currentWidth) => clampOpenedContainersWidth(
+        currentWidth - OPENED_PANE_KEYBOARD_STEP,
+        getViewportWidth(),
+      ));
+      return;
+    }
+
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      setOpenedPaneWidth((currentWidth) => clampOpenedContainersWidth(
+        currentWidth + OPENED_PANE_KEYBOARD_STEP,
+        getViewportWidth(),
+      ));
+      return;
+    }
+
+    if (event.key === 'Home') {
+      event.preventDefault();
+      setOpenedPaneWidth(OPENED_CONTAINERS_MIN_WIDTH);
+      return;
+    }
+
+    if (event.key === 'End') {
+      event.preventDefault();
+      setOpenedPaneWidth(openedPaneMaxWidth());
+    }
   }, []);
 
   const backendText = backendLabel(backendInfo);
@@ -213,7 +272,6 @@ export default function App() {
   const packageRootLabel = scan?.root || 'No package directory opened';
   const selectedPackageId = detailSelection?.kind === 'package' ? detailSelection.row.id : '';
   const shellBusy = isOpeningDirectory || isAnalyzing;
-  const workspaceGridTemplate = `${openedPaneWidth}px minmax(0, 1fr) minmax(236px, 304px)`;
 
   return (
     <Layout className="app-shell">
@@ -260,7 +318,7 @@ export default function App() {
       </Header>
 
       <div className="shell-body">
-        <div className="workspace-panels" style={{ gridTemplateColumns: workspaceGridTemplate }}>
+        <div className="workspace-panels" style={openedPaneStyle(openedPaneWidth)}>
           <section className="workspace-pane opened-containers-pane" aria-label="Package files">
             <div className="pane-title-block">
               <div>
@@ -282,11 +340,13 @@ export default function App() {
             <div
               aria-label="Resize opened containers"
               aria-orientation="vertical"
+              aria-valuemax={openedPaneMaxWidth()}
               aria-valuemin={OPENED_CONTAINERS_MIN_WIDTH}
               aria-valuenow={openedPaneWidth}
               className="opened-containers-resizer"
               role="separator"
               tabIndex={0}
+              onKeyDown={handleOpenedPaneKeyDown}
               onPointerDown={handleOpenedPanePointerDown}
             />
           </section>
