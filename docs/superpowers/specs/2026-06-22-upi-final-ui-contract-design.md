@@ -23,6 +23,7 @@ The renderer should treat UPI Final as a UI contract. Backend result fields rema
 - Render `Packages` with both `Table` and `Tree` modes, defaulting to `Table`.
 - Default package table sorting to package file name.
 - Allow package table sorting by size and compressed size.
+- Allow package table sorting by physical order when backend order data is available.
 - Make the visible `Full Path` table column the fixed leftmost primary table column.
 - Display package paths as complete single-line text with no ellipsis and no wrapping.
 - Use horizontal table scrolling for columns that do not fit.
@@ -77,7 +78,7 @@ The primary path column:
 - Does not wrap.
 - Remains visible while horizontally scrolling other columns.
 
-Other package table columns are narrow and design-approved. They must not crowd out the primary path column.
+Other package table columns are narrow and design-approved. They include size, compressed size, type, and physical order when real data is available. They must not crowd out the primary path column.
 
 The `Tree` view builds a hierarchy from package paths. It is a package-content tree, not a duplicate of the opened filesystem tree.
 
@@ -141,6 +142,7 @@ Implementation should follow test-first changes. The regression suite should cov
 - `Overview` renders only available statistic cards.
 - `Packages Table` defaults to file-name sorting.
 - Size and compressed size sorting are available.
+- Physical order sorting is available when package order data exists.
 - `Full Path` is fixed left, populated from package path data, single-line, not ellipsized, and horizontally scrollable.
 - `Packages Tree` renders hierarchy from package paths.
 - `Opened containers` computes an adaptive initial width and supports drag resizing without persistence.
