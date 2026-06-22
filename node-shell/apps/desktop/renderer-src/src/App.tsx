@@ -190,11 +190,12 @@ export default function App() {
   const [treeContentRef, treeHeight] = useMeasuredHeight<HTMLDivElement>();
   const [analysisTabsRegionRef, tableHeight] = useMeasuredHeight<HTMLDivElement>();
   const [detailSelection, setDetailSelection] = useState<DetailSelection | null>(null);
+  const [viewportWidth, setViewportWidthState] = useState(getViewportWidth);
   const [openedPaneWidth, setOpenedPaneWidth] = useState(() => {
-    const viewportWidth = getViewportWidth();
+    const currentViewportWidth = getViewportWidth();
     return clampOpenedPaneWidthForViewport(
-      estimateOpenedContainersWidth(scan?.tree, viewportWidth),
-      viewportWidth,
+      estimateOpenedContainersWidth(scan?.tree, currentViewportWidth),
+      currentViewportWidth,
     );
   });
   const openedPaneDragCleanupRef = useRef<(() => void) | null>(null);
@@ -214,6 +215,19 @@ export default function App() {
       viewportWidth,
     ));
   }, [scan?.tree]);
+
+  useEffect(() => {
+    function handleViewportResize(): void {
+      const nextViewportWidth = getViewportWidth();
+      setViewportWidthState(nextViewportWidth);
+      setOpenedPaneWidth((currentWidth) => (
+        clampOpenedPaneWidthForViewport(currentWidth, nextViewportWidth)
+      ));
+    }
+
+    window.addEventListener('resize', handleViewportResize);
+    return () => window.removeEventListener('resize', handleViewportResize);
+  }, []);
 
   useEffect(() => () => {
     openedPaneDragCleanupRef.current?.();
@@ -297,6 +311,7 @@ export default function App() {
   const packageRootLabel = scan?.root || 'No package directory opened';
   const selectedPackageId = detailSelection?.kind === 'package' ? detailSelection.row.id : '';
   const shellBusy = isOpeningDirectory || isAnalyzing;
+  const openedPaneMaxWidthValue = openedPaneMaxWidthForViewport(viewportWidth);
 
   return (
     <Layout className="app-shell">
@@ -365,7 +380,7 @@ export default function App() {
             <div
               aria-label="Resize opened containers"
               aria-orientation="vertical"
-              aria-valuemax={openedPaneMaxWidth()}
+              aria-valuemax={openedPaneMaxWidthValue}
               aria-valuemin={OPENED_CONTAINERS_MIN_WIDTH}
               aria-valuenow={openedPaneWidth}
               className="opened-containers-resizer"

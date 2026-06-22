@@ -461,6 +461,33 @@ describe('App', () => {
     expect(separator).toHaveAttribute('aria-valuenow', '260');
   });
 
+  test('clamps the existing opened pane width when viewport enters compact layout', () => {
+    setViewportWidth(1440);
+    const { container } = render(<App />);
+    const separator = screen.getByRole('separator', { name: 'Resize opened containers' });
+
+    fireEvent.pointerDown(separator, { clientX: 576, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 1000, pointerId: 1 });
+    fireEvent.pointerUp(window, { pointerId: 1 });
+
+    expect(openedPaneStyleWidth(container)).toBe(576);
+    expect(separator).toHaveAttribute('aria-valuenow', '576');
+
+    setViewportWidth(1024);
+    fireEvent.resize(window);
+
+    expect(openedPaneStyleWidth(container)).toBe(260);
+    expect(separator).toHaveAttribute('aria-valuenow', '260');
+    expect(separator).toHaveAttribute('aria-valuemax', '260');
+
+    setViewportWidth(1440);
+    fireEvent.resize(window);
+
+    expect(openedPaneStyleWidth(container)).toBe(260);
+    expect(separator).toHaveAttribute('aria-valuenow', '260');
+    expect(separator).toHaveAttribute('aria-valuemax', '576');
+  });
+
   test('stops drag resizing when the pointer drag is canceled', () => {
     setViewportWidth(1440);
     const { container } = render(<App />);
