@@ -432,6 +432,35 @@ describe('App', () => {
     expect(openedPaneStyleWidth(container)).toBe(576);
   });
 
+  test('clamps separator keyboard max to the compact visual max', () => {
+    setViewportWidth(1024);
+    const { container } = render(<App />);
+    const separator = screen.getByRole('separator', { name: 'Resize opened containers' });
+
+    expect(separator).toHaveAttribute('aria-valuemax', '260');
+
+    fireEvent.keyDown(separator, { key: 'Home' });
+
+    expect(openedPaneStyleWidth(container)).toBe(236);
+
+    fireEvent.keyDown(separator, { key: 'End' });
+
+    expect(openedPaneStyleWidth(container)).toBe(260);
+    expect(separator).toHaveAttribute('aria-valuenow', '260');
+  });
+
+  test('clamps pointer dragging to the compact visual max', () => {
+    setViewportWidth(1024);
+    const { container } = render(<App />);
+    const separator = screen.getByRole('separator', { name: 'Resize opened containers' });
+
+    fireEvent.pointerDown(separator, { clientX: 576, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 1000, pointerId: 1 });
+
+    expect(openedPaneStyleWidth(container)).toBe(260);
+    expect(separator).toHaveAttribute('aria-valuenow', '260');
+  });
+
   test('stops drag resizing when the pointer drag is canceled', () => {
     setViewportWidth(1440);
     const { container } = render(<App />);
@@ -443,6 +472,22 @@ describe('App', () => {
     expect(openedPaneStyleWidth(container)).toBe(336);
 
     fireEvent.pointerCancel(window, { pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 1000, pointerId: 1 });
+
+    expect(openedPaneStyleWidth(container)).toBe(336);
+  });
+
+  test('stops drag resizing when the window loses focus', () => {
+    setViewportWidth(1440);
+    const { container } = render(<App />);
+    const separator = screen.getByRole('separator', { name: 'Resize opened containers' });
+
+    fireEvent.pointerDown(separator, { clientX: 576, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 360, pointerId: 1 });
+
+    expect(openedPaneStyleWidth(container)).toBe(336);
+
+    fireEvent.blur(window);
     fireEvent.pointerMove(window, { clientX: 1000, pointerId: 1 });
 
     expect(openedPaneStyleWidth(container)).toBe(336);

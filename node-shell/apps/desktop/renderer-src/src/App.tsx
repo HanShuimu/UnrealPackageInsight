@@ -27,6 +27,8 @@ import {
 const { Header } = Layout;
 const SHELL_HORIZONTAL_PADDING = 24;
 const OPENED_PANE_KEYBOARD_STEP = 16;
+const OPENED_PANE_COMPACT_BREAKPOINT = 1040;
+const OPENED_PANE_COMPACT_MAX_WIDTH = 260;
 
 type OpenedPaneStyle = CSSProperties & {
   '--opened-pane-width': string;
@@ -44,8 +46,23 @@ function openedPaneStyle(width: number): OpenedPaneStyle {
   return { '--opened-pane-width': `${width}px` };
 }
 
+function openedPaneMaxWidthForViewport(viewportWidth: number): number {
+  if (viewportWidth <= OPENED_PANE_COMPACT_BREAKPOINT) {
+    return OPENED_PANE_COMPACT_MAX_WIDTH;
+  }
+
+  return clampOpenedContainersWidth(OPENED_CONTAINERS_MAX_WIDTH, viewportWidth);
+}
+
+function clampOpenedPaneWidthForViewport(width: number, viewportWidth: number): number {
+  return Math.min(
+    openedPaneMaxWidthForViewport(viewportWidth),
+    clampOpenedContainersWidth(width, viewportWidth),
+  );
+}
+
 function openedPaneMaxWidth(): number {
-  return clampOpenedContainersWidth(OPENED_CONTAINERS_MAX_WIDTH, getViewportWidth());
+  return openedPaneMaxWidthForViewport(getViewportWidth());
 }
 
 function normalizeMeasuredHeight(height: number): number {
@@ -173,9 +190,13 @@ export default function App() {
   const [treeContentRef, treeHeight] = useMeasuredHeight<HTMLDivElement>();
   const [analysisTabsRegionRef, tableHeight] = useMeasuredHeight<HTMLDivElement>();
   const [detailSelection, setDetailSelection] = useState<DetailSelection | null>(null);
-  const [openedPaneWidth, setOpenedPaneWidth] = useState(() => (
-    estimateOpenedContainersWidth(scan?.tree, getViewportWidth())
-  ));
+  const [openedPaneWidth, setOpenedPaneWidth] = useState(() => {
+    const viewportWidth = getViewportWidth();
+    return clampOpenedPaneWidthForViewport(
+      estimateOpenedContainersWidth(scan?.tree, viewportWidth),
+      viewportWidth,
+    );
+  });
   const openedPaneDragCleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -187,7 +208,11 @@ export default function App() {
   }, [analysisResult, selectedFilePath]);
 
   useEffect(() => {
-    setOpenedPaneWidth(estimateOpenedContainersWidth(scan?.tree, getViewportWidth()));
+    const viewportWidth = getViewportWidth();
+    setOpenedPaneWidth(clampOpenedPaneWidthForViewport(
+      estimateOpenedContainersWidth(scan?.tree, viewportWidth),
+      viewportWidth,
+    ));
   }, [scan?.tree]);
 
   useEffect(() => () => {
@@ -199,7 +224,7 @@ export default function App() {
     openedPaneDragCleanupRef.current?.();
 
     const updateWidth = (clientX: number) => {
-      setOpenedPaneWidth(clampOpenedContainersWidth(
+      setOpenedPaneWidth(clampOpenedPaneWidthForViewport(
         clientX - SHELL_HORIZONTAL_PADDING,
         getViewportWidth(),
       ));
@@ -239,7 +264,7 @@ export default function App() {
   const handleOpenedPaneKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'ArrowLeft') {
       event.preventDefault();
-      setOpenedPaneWidth((currentWidth) => clampOpenedContainersWidth(
+      setOpenedPaneWidth((currentWidth) => clampOpenedPaneWidthForViewport(
         currentWidth - OPENED_PANE_KEYBOARD_STEP,
         getViewportWidth(),
       ));
@@ -248,7 +273,7 @@ export default function App() {
 
     if (event.key === 'ArrowRight') {
       event.preventDefault();
-      setOpenedPaneWidth((currentWidth) => clampOpenedContainersWidth(
+      setOpenedPaneWidth((currentWidth) => clampOpenedPaneWidthForViewport(
         currentWidth + OPENED_PANE_KEYBOARD_STEP,
         getViewportWidth(),
       ));
