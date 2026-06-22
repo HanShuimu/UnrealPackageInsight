@@ -81,15 +81,18 @@ describe('PackageContentTree', () => {
       {
         key: '../../../Engine',
         title: 'Engine',
+        selectable: false,
         children: [
           {
             key: '../../../Engine/Config',
             title: 'Config',
+            selectable: false,
             children: [
               {
                 key: '../../../Engine/Config/Base.ini',
                 title: 'Base.ini',
                 packageRowId: 'base',
+                selectable: true,
               },
             ],
           },
@@ -137,6 +140,49 @@ describe('PackageContentTree', () => {
     render(<PackageContentTree rows={[row]} height={360} selectedPackageId="base" onSelectPackage={() => {}} />);
 
     expect(latestTreeProps().selectedKeys).toEqual(['../../../Engine/Config/Base.ini']);
+  });
+
+  test('selects and highlights duplicate package path leaves by their distinct tree keys', () => {
+    const duplicateRows: PackageRow[] = [
+      {
+        ...row,
+        id: 'foo-primary',
+        fullPath: '../../../Game/Foo.uasset',
+        fileName: 'Foo.uasset',
+      },
+      {
+        ...row,
+        id: 'foo-secondary',
+        fullPath: '../../../Game/Foo.uasset',
+        fileName: 'Foo.uasset',
+      },
+    ];
+    const onSelectPackage = vi.fn();
+
+    render(
+      <PackageContentTree
+        rows={duplicateRows}
+        height={360}
+        selectedPackageId="foo-secondary"
+        onSelectPackage={onSelectPackage}
+      />,
+    );
+
+    const duplicateLeafKeys = latestTreeProps()
+      .treeData?.[0]
+      ?.children?.map((leaf) => leaf.key);
+
+    expect(duplicateLeafKeys).toEqual([
+      '../../../Game/Foo.uasset::foo-primary',
+      '../../../Game/Foo.uasset::foo-secondary',
+    ]);
+    expect(latestTreeProps().selectedKeys).toEqual(['../../../Game/Foo.uasset::foo-secondary']);
+
+    latestTreeProps().onSelect?.(['../../../Game/Foo.uasset::foo-primary']);
+    latestTreeProps().onSelect?.(['../../../Game/Foo.uasset::foo-secondary']);
+
+    expect(onSelectPackage).toHaveBeenNthCalledWith(1, duplicateRows[0]);
+    expect(onSelectPackage).toHaveBeenNthCalledWith(2, duplicateRows[1]);
   });
 
   test('shows an empty package message when there are no rows', () => {

@@ -34,6 +34,7 @@ export type PackageTreeItem = {
   title: string;
   children?: PackageTreeItem[];
   packageRowId?: string;
+  selectable?: boolean;
 };
 
 export type IssueRow = {
@@ -319,6 +320,12 @@ export function buildIssueRows(result: AnalysisResult | null): IssueRow[] {
 export function buildPackageTree(rows: PackageRow[]): PackageTreeItem[] {
   const roots: PackageTreeItem[] = [];
   const nodesByKey = new Map<string, PackageTreeItem>();
+  const leafKeyCounts = new Map<string, number>();
+
+  rows.forEach((row) => {
+    const leafKey = pathSegments(row.fullPath).join('/');
+    leafKeyCounts.set(leafKey, (leafKeyCounts.get(leafKey) ?? 0) + 1);
+  });
 
   rows.forEach((row) => {
     const segments = pathSegments(row.fullPath);
@@ -332,21 +339,27 @@ export function buildPackageTree(rows: PackageRow[]): PackageTreeItem[] {
         return;
       }
 
-      const key = cumulativeSegments.join('/');
       const isLeaf = index === segments.length - 1;
+      const pathKey = cumulativeSegments.join('/');
+      const key = isLeaf && (leafKeyCounts.get(pathKey) ?? 0) > 1
+        ? `${pathKey}::${row.id}`
+        : pathKey;
       let node = nodesByKey.get(key);
 
       if (!node) {
-        node = { key, title: segment };
+        node = { key, title: segment, selectable: isLeaf };
         nodesByKey.set(key, node);
         siblings.push(node);
       }
 
       if (isLeaf) {
         node.packageRowId = row.id;
+        node.selectable = true;
         delete node.children;
         return;
       }
+
+      node.selectable = false;
 
       if (!node.children) {
         node.children = [];

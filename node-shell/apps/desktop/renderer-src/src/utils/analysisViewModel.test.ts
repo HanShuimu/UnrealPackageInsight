@@ -195,15 +195,18 @@ describe('buildPackageTree', () => {
       {
         key: '../../../Engine',
         title: 'Engine',
+        selectable: false,
         children: [
           {
             key: '../../../Engine/Config',
             title: 'Config',
+            selectable: false,
             children: [
               {
                 key: '../../../Engine/Config/Base.ini',
                 title: 'Base.ini',
                 packageRowId: '../../../Engine/Config/Base.ini',
+                selectable: true,
               },
             ],
           },
@@ -212,15 +215,18 @@ describe('buildPackageTree', () => {
       {
         key: '../../../Game',
         title: 'Game',
+        selectable: false,
         children: [
           {
             key: '../../../Game/Zeta',
             title: 'Zeta',
+            selectable: false,
             children: [
               {
                 key: '../../../Game/Zeta/Beta.uasset',
                 title: 'Beta.uasset',
                 packageRowId: '../../../Game/Zeta/Beta.uasset',
+                selectable: true,
               },
             ],
           },
@@ -239,6 +245,40 @@ describe('buildPackageTree', () => {
 
     expect(rows.map((row) => row.fileName)).toEqual(['A.uasset', 'Z.ini']);
     expect(buildPackageTree(rows).map((node) => node.title)).toEqual(['Engine', 'Game']);
+  });
+
+  test('creates distinct leaf keys for duplicate package paths without changing display titles', () => {
+    const tree = buildPackageTree([
+      {
+        id: '../../../Game/Foo.uasset',
+        fullPath: '../../../Game/Foo.uasset',
+        fileName: 'Foo.uasset',
+        source: {},
+      },
+      {
+        id: '../../../Game/Foo.uasset#2',
+        fullPath: '../../../Game/Foo.uasset',
+        fileName: 'Foo.uasset',
+        source: {},
+      },
+    ]);
+    const leaves = tree[0]?.children ?? [];
+
+    expect(leaves).toEqual([
+      {
+        key: '../../../Game/Foo.uasset::../../../Game/Foo.uasset',
+        title: 'Foo.uasset',
+        packageRowId: '../../../Game/Foo.uasset',
+        selectable: true,
+      },
+      {
+        key: '../../../Game/Foo.uasset::../../../Game/Foo.uasset#2',
+        title: 'Foo.uasset',
+        packageRowId: '../../../Game/Foo.uasset#2',
+        selectable: true,
+      },
+    ]);
+    expect(new Set(leaves.map((leaf) => leaf.key)).size).toBe(2);
   });
 });
 
