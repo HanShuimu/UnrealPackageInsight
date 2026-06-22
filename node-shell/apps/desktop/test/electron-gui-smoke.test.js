@@ -87,38 +87,37 @@ async function assertDevToolsPortAvailable() {
   }
 }
 
-async function findBrowserWebSocketUrl({ stderr, processSummary, deadlineMs = 15000 }) {
+async function findRendererWebSocketUrl({ stderr, processSummary, deadlineMs = 15000 }) {
   const deadline = Date.now() + deadlineMs;
-  let stderrWebSocketUrl = null;
-  let stderrWebSocketSeenAt = 0;
+  let lastTargets = null;
+  let lastError = null;
 
   while (Date.now() < deadline) {
-    const stderrMatch = stderr().match(/DevTools listening on (ws:\/\/[^\s]+)/);
-    if (stderrMatch) {
-      if (stderrWebSocketUrl !== stderrMatch[1]) {
-        stderrWebSocketUrl = stderrMatch[1];
-        stderrWebSocketSeenAt = Date.now();
-      }
-    }
-
     try {
-      const version = await readJson(`http://127.0.0.1:${DEVTOOLS_PORT}/json/version`);
-      if (typeof version.webSocketDebuggerUrl === 'string' && version.webSocketDebuggerUrl.length > 0) {
-        return version.webSocketDebuggerUrl;
-      }
-    } catch {
-      // Electron may not have opened the browser DevTools endpoint yet.
-    }
+      const targets = await readJson(`http://127.0.0.1:${DEVTOOLS_PORT}/json`);
+      lastTargets = targets;
+      const target = targets.find((entry) => (
+        entry.type === 'page'
+        && typeof entry.webSocketDebuggerUrl === 'string'
+        && entry.webSocketDebuggerUrl.length > 0
+      ));
 
-    if (stderrWebSocketUrl && Date.now() - stderrWebSocketSeenAt >= 1000) {
-      return stderrWebSocketUrl;
+      if (target) {
+        return target.webSocketDebuggerUrl;
+      }
+    } catch (error) {
+      lastError = error;
+      // Electron may not have opened the DevTools endpoint yet.
     }
 
     await delay(100);
   }
 
   throw new Error(
-    `Timed out waiting for Electron browser CDP endpoint.\n${processSummary()}\nElectron stderr:\n${stderr()}`,
+    `Timed out waiting for Electron renderer CDP target.\n${processSummary()}\n`
+    + `Last CDP targets:\n${JSON.stringify(lastTargets, null, 2)}\n`
+    + `Last /json error: ${lastError?.message || 'none'}\n`
+    + `Electron stderr:\n${stderr()}`,
   );
 }
 
@@ -226,47 +225,6 @@ function createCdpClient(webSocketDebuggerUrl, { stderr = () => '' } = {}) {
   };
 }
 
-async function findRendererTarget(client, { stderr, deadlineMs = 15000 }) {
-  const deadline = Date.now() + deadlineMs;
-  let lastTargets = null;
-  let lastError = null;
-  let stableTarget = null;
-  let stableSince = 0;
-
-  while (Date.now() < deadline) {
-    try {
-      const { targetInfos } = await client.send('Target.getTargets');
-      lastTargets = targetInfos;
-      const target = targetInfos.find((entry) => entry.type === 'page');
-
-      if (target) {
-        if (stableTarget?.targetId === target.targetId) {
-          if (Date.now() - stableSince >= 1500) {
-            return target;
-          }
-        } else {
-          stableTarget = target;
-          stableSince = Date.now();
-        }
-      } else {
-        stableTarget = null;
-        stableSince = 0;
-      }
-    } catch (error) {
-      lastError = error;
-    }
-
-    await delay(100);
-  }
-
-  throw new Error(
-    `Timed out waiting for Electron renderer CDP target.\n`
-    + `Last CDP targets:\n${JSON.stringify(lastTargets, null, 2)}\n`
-    + `Last Target.getTargets error: ${lastError?.message || 'none'}\n`
-    + `Electron stderr:\n${stderr()}`,
-  );
-}
-
 async function evaluate(client, expression, sessionId) {
   const result = await client.send('Runtime.evaluate', {
     awaitPromise: true,
@@ -281,7 +239,7 @@ async function evaluate(client, expression, sessionId) {
   return result.result.value;
 }
 
-async function waitFor(client, expression, { sessionId, timeoutMs = 10000, intervalMs = 100 }) {
+async function waitFor(client, expression, { sessionId, timeoutMs = 10000, intervalMs = 100 } = {}) {
   const deadline = Date.now() + timeoutMs;
   let lastError = null;
 
@@ -339,9 +297,8 @@ test('Electron GUI launches, mounts the renderer, and exposes preload API', { re
     `--remote-debugging-port=${DEVTOOLS_PORT}`,
     '--remote-allow-origins=*',
     '--disable-gpu',
-    '--disable-gpu-compositing',
-    '--disable-software-rasterizer',
-    '--disable-features=Vulkan,UseSkiaRenderer,DirectComposition,CanvasOopRasterization',
+    '--no-sandbox',
+    '--disable-gpu-sandbox',
     `--user-data-dir=${userDataDir}`,
     mainPath,
     SMOKE_DISABLE_HARDWARE_ACCELERATION_ARG,
@@ -412,38 +369,33 @@ test('Electron GUI launches, mounts the renderer, and exposes preload API', { re
     }
   });
 
-  const browserWebSocketUrl = await findBrowserWebSocketUrl({ stderr, processSummary });
-  client = createCdpClient(browserWebSocketUrl, { stderr });
+  const rendererWebSocketUrl = await findRendererWebSocketUrl({ stderr, processSummary });
+  client = createCdpClient(rendererWebSocketUrl, { stderr });
   await client.waitForOpen();
-  const target = await findRendererTarget(client, { stderr });
-  const { sessionId } = await client.send('Target.attachToTarget', {
-    flatten: true,
-    targetId: target.targetId,
-  });
 
   const exceptions = [];
   client.on('Runtime.exceptionThrown', (params) => {
     exceptions.push(params.exceptionDetails?.text || 'Runtime.exceptionThrown');
   });
 
-  await client.send('Runtime.enable', {}, sessionId);
-  await client.send('Page.enable', {}, sessionId);
+  await client.send('Runtime.enable');
+  await client.send('Page.enable');
   await client.send('Page.addScriptToEvaluateOnNewDocument', {
     source: 'window.__UPI_SMOKE_RELOAD_MARKER__ = true;',
-  }, sessionId);
-  await client.send('Page.reload', { ignoreCache: true }, sessionId);
+  });
+  await client.send('Page.reload', { ignoreCache: true });
 
   await waitFor(client, (
     'window.__UPI_SMOKE_RELOAD_MARKER__ === true'
     + ' && document.readyState === "complete"'
     + ' && document.querySelector("#root")?.textContent?.trim().length > 0'
-  ), { sessionId });
+  ));
 
-  const visibleText = await evaluate(client, 'document.body.innerText', sessionId);
+  const visibleText = await evaluate(client, 'document.body.innerText');
   for (const expectedText of ['Overview', 'Packages', 'Issues', 'Opened containers', 'Details']) {
     assert.match(visibleText, new RegExp(expectedText));
   }
 
-  assert.equal(await evaluate(client, 'typeof window.upi === "object" && window.upi !== null', sessionId), true);
+  assert.equal(await evaluate(client, 'typeof window.upi === "object" && window.upi !== null'), true);
   assert.deepEqual(exceptions, []);
 });
