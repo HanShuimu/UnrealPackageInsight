@@ -10,6 +10,10 @@ void analysisTabContractIds;
 const rawTabIdIsNotAnalysisTabsId: AnalysisTabModel['id'] = 'raw';
 void rawTabIdIsNotAnalysisTabsId;
 
+// @ts-expect-error arbitrary tab kinds are not part of the analysis tabs contract.
+const arbitraryKindIsNotAnalysisTabsKind: AnalysisTabModel['kind'] = 'arbitrary';
+void arbitraryKindIsNotAnalysisTabsKind;
+
 // @ts-expect-error raw is not part of the public analysis tabs contract.
 const rawTabIsNotAnalysisTabsModel: AnalysisTabModel = { id: 'raw', label: 'Raw', kind: 'raw' };
 void rawTabIsNotAnalysisTabsModel;

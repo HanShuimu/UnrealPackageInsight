@@ -4,8 +4,7 @@ import { ANALYSIS_TABS, type AnalysisTabModel as AnalysisViewModelTabModel } fro
 type InternalUnreachableTabSwitchCompatibility = {
   id: never;
   label: never;
-  kind: string;
-  field: 'packages';
+  kind: 'raw';
 };
 
 export type AnalysisTabModel = AnalysisViewModelTabModel | InternalUnreachableTabSwitchCompatibility;

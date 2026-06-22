@@ -144,6 +144,33 @@ describe('buildPackageRows', () => {
       }),
     ]);
   });
+
+  test('preserves zero physical order values from order', () => {
+    expect(buildPackageRows({
+      packages: [
+        { packagePath: '../../../Game/Zero.uasset', order: 0, physicalOrder: 4 },
+      ],
+    })).toEqual([
+      expect.objectContaining({
+        id: '../../../Game/Zero.uasset',
+        physicalOrder: 0,
+      }),
+    ]);
+  });
+
+  test('falls back to the next path field when packagePath is whitespace', () => {
+    expect(buildPackageRows({
+      packages: [
+        { packagePath: '   ', path: '../../../Game/Whitespace.uasset' },
+      ],
+    })).toEqual([
+      expect.objectContaining({
+        id: '../../../Game/Whitespace.uasset',
+        fullPath: '../../../Game/Whitespace.uasset',
+        fileName: 'Whitespace.uasset',
+      }),
+    ]);
+  });
 });
 
 describe('package row comparators', () => {
@@ -200,6 +227,18 @@ describe('buildPackageTree', () => {
         ],
       },
     ]);
+  });
+
+  test('sorts tree siblings by hierarchy instead of package filename order', () => {
+    const rows = buildPackageRows({
+      packages: [
+        { packagePath: '../../../Game/Zeta/A.uasset' },
+        { packagePath: '../../../Engine/Config/Z.ini' },
+      ],
+    });
+
+    expect(rows.map((row) => row.fileName)).toEqual(['A.uasset', 'Z.ini']);
+    expect(buildPackageTree(rows).map((node) => node.title)).toEqual(['Engine', 'Game']);
   });
 });
 

@@ -84,9 +84,21 @@ function toFiniteNumber(value: unknown): number | undefined {
 }
 
 function firstPathValue(record: Record<string, unknown>): string | undefined {
-  const value = record.packagePath || record.path || record.fullPath || record.relativePath || record.name;
+  const values = [record.packagePath, record.path, record.fullPath, record.relativePath, record.name];
 
-  return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
+  for (const value of values) {
+    if (typeof value !== 'string') {
+      continue;
+    }
+
+    const trimmedValue = value.trim();
+
+    if (trimmedValue !== '') {
+      return trimmedValue;
+    }
+  }
+
+  return undefined;
 }
 
 function pathSegments(path: string): string[] {
@@ -158,6 +170,21 @@ function sumKnown(values: Array<number | undefined>): number | undefined {
   return found ? total : undefined;
 }
 
+function comparePackageTreeItem(left: PackageTreeItem, right: PackageTreeItem): number {
+  return compareText(left.title, right.title) || compareText(left.key, right.key);
+}
+
+function sortPackageTreeItems(items: PackageTreeItem[]): PackageTreeItem[] {
+  items.sort(comparePackageTreeItem);
+  items.forEach((item) => {
+    if (item.children) {
+      sortPackageTreeItems(item.children);
+    }
+  });
+
+  return items;
+}
+
 export function comparePackageFileName(left: PackageRow, right: PackageRow): number {
   return comparePackagePath(left, right);
 }
@@ -197,7 +224,7 @@ export function buildPackageRows(result: AnalysisResult | null): PackageRow[] {
     const type = typeFromFileName(fileName);
     const size = toFiniteNumber(packageEntry.size ?? packageEntry.diskSize);
     const compressedSize = toFiniteNumber(packageEntry.compressedSize);
-    const physicalOrder = toFiniteNumber(packageEntry.order || packageEntry.physicalOrder);
+    const physicalOrder = toFiniteNumber(packageEntry.order) ?? toFiniteNumber(packageEntry.physicalOrder);
     const row: PackageRowDraft = {
       fullPath,
       fileName,
@@ -329,7 +356,7 @@ export function buildPackageTree(rows: PackageRow[]): PackageTreeItem[] {
     });
   });
 
-  return roots;
+  return sortPackageTreeItems(roots);
 }
 
 export function buildAnalysisViewModel(result: AnalysisResult | null): AnalysisViewModel {
