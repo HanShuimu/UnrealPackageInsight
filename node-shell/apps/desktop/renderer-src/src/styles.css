@@ -306,6 +306,24 @@ body {
   overflow: hidden;
 }
 
+.package-pane {
+  display: flex;
+  flex-direction: column;
+}
+
+.package-mode-row {
+  display: flex;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  padding-bottom: 12px;
+}
+
+.package-mode-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .analysis-table-pane .ant-empty,
 .analysis-tabs-region .ant-empty {
   margin-top: 48px;

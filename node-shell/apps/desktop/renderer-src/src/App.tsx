@@ -6,6 +6,7 @@ import { BackendChooserDialog } from './components/BackendChooserDialog';
 import { PackageTree } from './components/PackageTree';
 import { useAppStore } from './stores/useAppStore';
 import type { BackendInfo } from './types/upi';
+import type { DetailSelection } from './utils/analysisViewModel';
 
 const { Header } = Layout;
 
@@ -152,6 +153,7 @@ export default function App() {
   const cancelBackendDialog = useAppStore((state) => state.cancelBackendDialog);
   const [treeContentRef, treeHeight] = useMeasuredHeight<HTMLDivElement>();
   const [analysisTabsRegionRef, tableHeight] = useMeasuredHeight<HTMLDivElement>();
+  const [detailSelection, setDetailSelection] = useState<DetailSelection | null>(null);
 
   useEffect(() => {
     void loadBackendInfo();
@@ -162,6 +164,7 @@ export default function App() {
   const packageRootLabel = scan?.root || 'No package directory opened';
   const selectedLabel = selectedFilePath ? fileName(selectedFilePath) : '';
   const selectedKind = selectedFilePath ? selectedKindLabel(selectedFilePath) : '';
+  const selectedPackageId = detailSelection?.kind === 'package' ? detailSelection.id : '';
   const shellBusy = isOpeningDirectory || isAnalyzing;
 
   return (
@@ -233,7 +236,12 @@ export default function App() {
           <main className="analysis-content">
             <Spin classNames={{ root: 'analysis-spinner' }} spinning={shellBusy}>
               <div className="analysis-tabs-region" ref={analysisTabsRegionRef}>
-                <AnalysisTabs result={analysisResult} tableHeight={tableHeight} />
+                <AnalysisTabs
+                  result={analysisResult}
+                  selectedPackageId={selectedPackageId}
+                  tableHeight={tableHeight}
+                  onDetailsSelectionChange={setDetailSelection}
+                />
               </div>
             </Spin>
           </main>
