@@ -1,8 +1,14 @@
 import { Empty, Tree } from 'antd';
-import type { Key } from 'react';
+import type { DataNode } from 'antd/es/tree';
+import type { Key, ReactNode } from 'react';
 import { useCallback, useMemo } from 'react';
 import type { PackageScan } from '../types/upi';
-import { createSelectableFileMap, directoryKeys, toAntTreeData } from './packageTreeData';
+import {
+  createSelectableFileMap,
+  directoryKeys,
+  toAntTreeData,
+  type PackageTreeDataNode,
+} from './packageTreeData';
 
 type PackageTreeProps = {
   scan: PackageScan | null;
@@ -11,17 +17,36 @@ type PackageTreeProps = {
   onSelectFile(filePath: string): void;
 };
 
+function openedContainerTitle(node: PackageTreeDataNode): ReactNode {
+  const title = node.title || String(node.key);
+
+  return (
+    <span className="opened-container-tree-title" title={node.fullPath || title}>
+      {title}
+    </span>
+  );
+}
+
+function withOpenedContainerTitles(nodes: PackageTreeDataNode[]): DataNode[] {
+  return nodes.map(({ children, fullPath: _fullPath, title: _title, ...node }) => ({
+    ...node,
+    title: openedContainerTitle({ ...node, children, fullPath: _fullPath, title: _title }),
+    children: children?.length ? withOpenedContainerTitles(children) : undefined,
+  }));
+}
+
 export function PackageTree({ scan, selectedFilePath, height, onSelectFile }: PackageTreeProps) {
   const treeState = useMemo(() => {
     if (!scan?.tree) {
       return null;
     }
 
-    const treeData = toAntTreeData(scan.tree);
+    const rawTreeData = toAntTreeData(scan.tree);
+    const treeData = withOpenedContainerTitles(rawTreeData);
     const selectableFiles = createSelectableFileMap(scan.tree);
     const expandedKeys = directoryKeys(scan.tree);
     const treeInstanceKey = [
-      String(treeData[0]?.key || ''),
+      String(rawTreeData[0]?.key || ''),
       expandedKeys.join('|'),
       Array.from(selectableFiles.keys()).join('|'),
     ].join('::');

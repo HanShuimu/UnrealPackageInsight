@@ -150,11 +150,36 @@ function resizeElement(selector: string, height: number): void {
   });
 }
 
+function setViewportWidth(width: number): void {
+  Object.defineProperty(window, 'innerWidth', {
+    configurable: true,
+    value: width,
+    writable: true,
+  });
+}
+
+function openedPaneGridWidth(container: HTMLElement): number {
+  const panels = container.querySelector('.workspace-panels') as HTMLElement | null;
+
+  if (!panels) {
+    throw new Error('Missing workspace panels');
+  }
+
+  const match = /^(\d+)px/.exec(panels.style.gridTemplateColumns);
+
+  if (!match) {
+    throw new Error(`Missing pixel left column: ${panels.style.gridTemplateColumns}`);
+  }
+
+  return Number(match[1]);
+}
+
 describe('App', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockHarness.observers.length = 0;
     mockHarness.state = createMockState();
+    setViewportWidth(1024);
     vi.stubGlobal('ResizeObserver', ResizeObserverMock);
   });
 
@@ -314,6 +339,75 @@ describe('App', () => {
       expect(screen.getByTestId('package-tree')).toHaveAttribute('data-height', '321');
       expect(screen.getByTestId('analysis-tabs')).toHaveAttribute('data-height', '456');
     });
+  });
+
+  test('sizes and drags the opened containers pane without persisting width', () => {
+    setViewportWidth(1440);
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
+    const deepPackagePath = 'C:\\WORKSPACE_RA\\RATrunk\\LocalBuilds\\Game\\Windows\\Project\\Content\\Paks\\pakchunk0-WindowsNoEditor_Optional_StreamedTextures_VeryLongLabel.pak';
+
+    mockHarness.state = createMockState({
+      scan: {
+        root: 'C:\\WORKSPACE_RA\\RATrunk\\LocalBuilds\\Game\\Windows',
+        files: [{ path: deepPackagePath, kind: 'pak' }],
+        tree: {
+          name: 'Windows',
+          kind: 'directory',
+          children: [
+            {
+              name: 'Project',
+              kind: 'directory',
+              children: [
+                {
+                  name: 'Content',
+                  kind: 'directory',
+                  children: [
+                    {
+                      name: 'Paks',
+                      kind: 'directory',
+                      children: [
+                        {
+                          name: 'pakchunk0-WindowsNoEditor_Optional_StreamedTextures_VeryLongLabel.pak',
+                          path: deepPackagePath,
+                          kind: 'pak',
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+
+    try {
+      const { container } = render(<App />);
+      const panels = container.querySelector('.workspace-panels') as HTMLElement;
+
+      expect(openedPaneGridWidth(container)).toBeGreaterThan(304);
+      expect(panels.style.gridTemplateColumns).toMatch(/^\d+px minmax\(0, 1fr\) minmax\(236px, 304px\)$/);
+
+      const separator = screen.getByRole('separator', { name: 'Resize opened containers' });
+
+      fireEvent.pointerDown(separator, { clientX: 576, pointerId: 1 });
+      fireEvent.pointerMove(window, { clientX: 360, pointerId: 1 });
+
+      expect(openedPaneGridWidth(container)).toBe(336);
+
+      fireEvent.pointerMove(window, { clientX: 1000, pointerId: 1 });
+
+      expect(openedPaneGridWidth(container)).toBe(576);
+
+      fireEvent.pointerUp(window, { pointerId: 1 });
+      fireEvent.pointerMove(window, { clientX: 300, pointerId: 1 });
+
+      expect(openedPaneGridWidth(container)).toBe(576);
+      expect(setItemSpy).not.toHaveBeenCalled();
+    } finally {
+      setItemSpy.mockRestore();
+    }
   });
 
   test('exposes constrained labels for long shell values', () => {

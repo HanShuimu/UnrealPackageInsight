@@ -1,5 +1,12 @@
 import { Button, Layout, Spin, Typography } from 'antd';
-import { useCallback, useEffect, useState, type RefCallback } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type RefCallback,
+} from 'react';
 import { AesKeyDialog } from './components/AesKeyDialog';
 import { AnalysisTabs } from './components/AnalysisTabs';
 import { BackendChooserDialog } from './components/BackendChooserDialog';
@@ -8,8 +15,22 @@ import { PackageTree } from './components/PackageTree';
 import { useAppStore } from './stores/useAppStore';
 import type { BackendInfo } from './types/upi';
 import type { DetailSelection } from './utils/analysisViewModel';
+import {
+  OPENED_CONTAINERS_MIN_WIDTH,
+  clampOpenedContainersWidth,
+  estimateOpenedContainersWidth,
+} from './utils/openedContainersPane';
 
 const { Header } = Layout;
+const SHELL_HORIZONTAL_PADDING = 24;
+
+function getViewportWidth(): number {
+  if (typeof window === 'undefined') {
+    return 1440;
+  }
+
+  return window.innerWidth || 1440;
+}
 
 function normalizeMeasuredHeight(height: number): number {
   return Math.max(0, Math.floor(height));
@@ -136,6 +157,10 @@ export default function App() {
   const [treeContentRef, treeHeight] = useMeasuredHeight<HTMLDivElement>();
   const [analysisTabsRegionRef, tableHeight] = useMeasuredHeight<HTMLDivElement>();
   const [detailSelection, setDetailSelection] = useState<DetailSelection | null>(null);
+  const [openedPaneWidth, setOpenedPaneWidth] = useState(() => (
+    estimateOpenedContainersWidth(scan?.tree, getViewportWidth())
+  ));
+  const openedPaneDragCleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     void loadBackendInfo();
@@ -145,11 +170,50 @@ export default function App() {
     setDetailSelection(null);
   }, [analysisResult, selectedFilePath]);
 
+  useEffect(() => {
+    setOpenedPaneWidth(estimateOpenedContainersWidth(scan?.tree, getViewportWidth()));
+  }, [scan?.tree]);
+
+  useEffect(() => () => {
+    openedPaneDragCleanupRef.current?.();
+  }, []);
+
+  const handleOpenedPanePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    openedPaneDragCleanupRef.current?.();
+
+    const updateWidth = (clientX: number) => {
+      setOpenedPaneWidth(clampOpenedContainersWidth(
+        clientX - SHELL_HORIZONTAL_PADDING,
+        getViewportWidth(),
+      ));
+    };
+
+    function handlePointerMove(moveEvent: PointerEvent): void {
+      updateWidth(moveEvent.clientX);
+    }
+
+    function removeDragListeners(): void {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      openedPaneDragCleanupRef.current = null;
+    }
+
+    function handlePointerUp(): void {
+      removeDragListeners();
+    }
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    openedPaneDragCleanupRef.current = removeDragListeners;
+  }, []);
+
   const backendText = backendLabel(backendInfo);
   const backendPillText = backendPillLabel(backendInfo, backendText);
   const packageRootLabel = scan?.root || 'No package directory opened';
   const selectedPackageId = detailSelection?.kind === 'package' ? detailSelection.row.id : '';
   const shellBusy = isOpeningDirectory || isAnalyzing;
+  const workspaceGridTemplate = `${openedPaneWidth}px minmax(0, 1fr) minmax(236px, 304px)`;
 
   return (
     <Layout className="app-shell">
@@ -196,7 +260,7 @@ export default function App() {
       </Header>
 
       <div className="shell-body">
-        <div className="workspace-panels">
+        <div className="workspace-panels" style={{ gridTemplateColumns: workspaceGridTemplate }}>
           <section className="workspace-pane opened-containers-pane" aria-label="Package files">
             <div className="pane-title-block">
               <div>
@@ -215,6 +279,16 @@ export default function App() {
                 onSelectFile={(filePath) => void analyzeFile(filePath)}
               />
             </div>
+            <div
+              aria-label="Resize opened containers"
+              aria-orientation="vertical"
+              aria-valuemin={OPENED_CONTAINERS_MIN_WIDTH}
+              aria-valuenow={openedPaneWidth}
+              className="opened-containers-resizer"
+              role="separator"
+              tabIndex={0}
+              onPointerDown={handleOpenedPanePointerDown}
+            />
           </section>
 
           <main className="analysis-content">

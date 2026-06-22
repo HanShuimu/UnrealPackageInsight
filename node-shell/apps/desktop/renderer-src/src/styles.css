@@ -152,6 +152,39 @@ body {
   overflow: hidden;
 }
 
+.opened-containers-pane {
+  position: relative;
+}
+
+.opened-containers-resizer {
+  position: absolute;
+  top: 0;
+  right: -13px;
+  z-index: 2;
+  width: 24px;
+  height: 100%;
+  cursor: col-resize;
+  outline: none;
+  touch-action: none;
+}
+
+.opened-containers-resizer::after {
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 11px;
+  width: 2px;
+  content: "";
+  background: transparent;
+  border-radius: 999px;
+  transition: background 120ms ease;
+}
+
+.opened-containers-resizer:hover::after,
+.opened-containers-resizer:focus-visible::after {
+  background: var(--upi-accent-border);
+}
+
 .pane-title-block {
   display: flex;
   align-items: flex-start;
@@ -216,6 +249,16 @@ body {
   font-weight: 700;
   background: var(--upi-accent-soft);
   outline: 1px solid var(--upi-accent-border);
+}
+
+.opened-container-tree-title {
+  display: inline-block;
+  max-width: 100%;
+  overflow: visible;
+  line-height: 20px;
+  white-space: nowrap;
+  text-overflow: clip;
+  vertical-align: top;
 }
 
 .analysis-content {

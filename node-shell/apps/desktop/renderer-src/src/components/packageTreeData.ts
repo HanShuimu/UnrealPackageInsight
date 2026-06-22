@@ -3,6 +3,12 @@ import type { PackageTreeNode } from '../types/upi';
 
 const SUPPORTED_FILE_KINDS = new Set(['pak', 'utoc', 'ucas']);
 
+export type PackageTreeDataNode = Omit<DataNode, 'children' | 'title'> & {
+  children?: PackageTreeDataNode[];
+  fullPath?: string;
+  title: string;
+};
+
 function fileValue(node: PackageTreeNode): string {
   return node.path || node.relativePath || '';
 }
@@ -25,19 +31,21 @@ export function nodeKey(node: PackageTreeNode, parentKey = '', index = 0): strin
   return parentKey ? `${parentKey}/${fallback}` : fallback;
 }
 
-function toAntTreeNode(node: PackageTreeNode, parentKey: string, index: number): DataNode {
+function toAntTreeNode(node: PackageTreeNode, parentKey: string, index: number): PackageTreeDataNode {
   const key = nodeKey(node, parentKey, index);
   const children = node.children?.map((child, childIndex) => toAntTreeNode(child, key, childIndex));
+  const fullPath = isSupportedFileNode(node) ? fileValue(node) : '';
 
   return {
     key,
     title: node.name || node.path || node.relativePath || '',
     selectable: isSupportedFileNode(node),
+    ...(fullPath ? { fullPath } : {}),
     children: children?.length ? children : undefined,
   };
 }
 
-export function toAntTreeData(node: PackageTreeNode): DataNode[] {
+export function toAntTreeData(node: PackageTreeNode): PackageTreeDataNode[] {
   return [toAntTreeNode(node, '', 0)];
 }
 
