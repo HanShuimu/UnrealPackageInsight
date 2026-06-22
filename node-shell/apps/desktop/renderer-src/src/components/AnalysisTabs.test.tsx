@@ -1,7 +1,7 @@
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import type { PackageRow } from '../utils/analysisViewModel';
+import type { DetailSelection, IssueRow, PackageRow } from '../utils/analysisViewModel';
 import type { AnalysisResult } from '../types/upi';
 import { AnalysisTabs } from './AnalysisTabs';
 
@@ -11,14 +11,15 @@ type ObserverRecord = {
 };
 
 type MockColumn = {
-  dataIndex?: string;
+  dataIndex?: keyof IssueRow;
   key?: string;
   title?: React.ReactNode;
 };
 
 type MockTableProps = {
   columns?: MockColumn[];
-  dataSource?: Array<Record<string, unknown>>;
+  dataSource?: IssueRow[];
+  onRow?: (row: IssueRow) => { onClick?: () => void };
   pagination?: false;
   rowKey?: string;
   scroll?: { y?: number };
@@ -127,15 +128,19 @@ vi.mock('antd', async () => {
             </tr>
           </thead>
           <tbody>
-            {props.dataSource?.map((row, rowIndex) => (
-              <tr key={String(row.id ?? rowIndex)}>
-                {props.columns?.map((column) => (
-                  <td key={column.key}>
-                    {column.dataIndex ? String(row[column.dataIndex] ?? '') : ''}
-                  </td>
-                ))}
-              </tr>
-            ))}
+            {props.dataSource?.map((row, rowIndex) => {
+              const rowEvents = props.onRow?.(row) ?? {};
+
+              return (
+                <tr key={String(row.id ?? rowIndex)} onClick={rowEvents.onClick}>
+                  {props.columns?.map((column) => (
+                    <td key={column.key}>
+                      {column.dataIndex ? String(row[column.dataIndex] ?? '') : ''}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       );
@@ -237,7 +242,7 @@ function analysisResult(path = fooPath): AnalysisResult {
 function renderTabs(
   result: AnalysisResult | null,
   options: {
-    onDetailsSelectionChange?: (selection: { kind: 'package' | 'issue'; id: string } | null) => void;
+    onDetailsSelectionChange?: (selection: DetailSelection | null) => void;
     selectedPackageId?: string;
     tableHeight?: number;
   } = {},
@@ -467,7 +472,7 @@ describe('AnalysisTabs', () => {
     expect(issueTable).not.toHaveTextContent('source');
   });
 
-  test('selecting a package from the table reports a package detail selection', () => {
+  test('selecting a package from the table reports a package row detail selection', () => {
     const onDetailsSelectionChange = vi.fn();
     renderTabs(analysisResult(fooPath), { onDetailsSelectionChange });
 
@@ -475,6 +480,45 @@ describe('AnalysisTabs', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Packages' }));
     fireEvent.click(screen.getByRole('button', { name: 'Select first package' }));
 
-    expect(onDetailsSelectionChange).toHaveBeenCalledWith({ kind: 'package', id: fooPath });
+    expect(onDetailsSelectionChange).toHaveBeenCalledWith({
+      kind: 'package',
+      row: expect.objectContaining({
+        id: fooPath,
+        fullPath: fooPath,
+        fileName: 'Foo.uasset',
+        size: 2048,
+        compressedSize: 1024,
+        physicalOrder: 7,
+      }),
+    });
+  });
+
+  test('selecting an issue row reports an issue row detail selection', () => {
+    const onDetailsSelectionChange = vi.fn();
+    renderTabs({
+      overview: {},
+      packages: [],
+      issues: [
+        {
+          severity: 'error',
+          code: 'UPI002',
+          message: 'Package index is invalid',
+        },
+      ],
+    }, { onDetailsSelectionChange });
+
+    onDetailsSelectionChange.mockClear();
+    fireEvent.click(screen.getByRole('tab', { name: 'Issues' }));
+    fireEvent.click(screen.getByText('Package index is invalid'));
+
+    expect(onDetailsSelectionChange).toHaveBeenCalledWith({
+      kind: 'issue',
+      row: expect.objectContaining({
+        id: 'issue-1',
+        severity: 'error',
+        code: 'UPI002',
+        message: 'Package index is invalid',
+      }),
+    });
   });
 });

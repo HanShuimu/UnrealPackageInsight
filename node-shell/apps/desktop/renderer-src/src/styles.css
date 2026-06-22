@@ -412,33 +412,6 @@ body {
   line-height: 24px;
 }
 
-.empty-tab-region {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: calc(100% - 48px);
-  margin: 24px;
-  color: var(--upi-muted);
-  text-align: center;
-  background: var(--upi-field);
-  border: 1px solid var(--upi-line-soft);
-  border-radius: 6px;
-}
-
-.empty-tab-title.ant-typography {
-  margin: 0 0 12px;
-  color: var(--upi-muted);
-  font-size: 18px;
-  line-height: 22px;
-  letter-spacing: 0;
-}
-
-.empty-tab-subtitle.ant-typography {
-  color: var(--upi-muted-light);
-  font-size: 13px;
-}
-
 .details-region {
   position: relative;
 }

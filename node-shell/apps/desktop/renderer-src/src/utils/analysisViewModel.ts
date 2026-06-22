@@ -46,8 +46,8 @@ export type IssueRow = {
 };
 
 export type DetailSelection =
-  | { kind: 'package'; id: string }
-  | { kind: 'issue'; id: string };
+  | { kind: 'package'; row: PackageRow }
+  | { kind: 'issue'; row: IssueRow };
 
 export type AnalysisViewModel = {
   tabs: ContractAnalysisTabModel[];

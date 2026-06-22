@@ -164,7 +164,7 @@ export default function App() {
   const packageRootLabel = scan?.root || 'No package directory opened';
   const selectedLabel = selectedFilePath ? fileName(selectedFilePath) : '';
   const selectedKind = selectedFilePath ? selectedKindLabel(selectedFilePath) : '';
-  const selectedPackageId = detailSelection?.kind === 'package' ? detailSelection.id : '';
+  const selectedPackageId = detailSelection?.kind === 'package' ? detailSelection.row.id : '';
   const shellBusy = isOpeningDirectory || isAnalyzing;
 
   return (

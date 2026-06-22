@@ -167,10 +167,23 @@ function PackagePane({
   );
 }
 
-function IssuesTable({ fallbackHeight, rows }: { fallbackHeight: number; rows: IssueRow[] }) {
+function IssuesTable({
+  fallbackHeight,
+  rows,
+  onSelectIssue,
+}: {
+  fallbackHeight: number;
+  rows: IssueRow[];
+  onSelectIssue(row: IssueRow): void;
+}) {
   const [paneRef, measuredHeight] = useMeasuredHeight<HTMLDivElement>();
   const availableHeight = measuredHeight || fallbackHeight;
   const issueTableHeight = tableBodyHeight(availableHeight);
+  const handleRow = useCallback((row: IssueRow) => ({
+    onClick: () => {
+      onSelectIssue(row);
+    },
+  }), [onSelectIssue]);
 
   if (rows.length === 0) {
     return (
@@ -192,6 +205,7 @@ function IssuesTable({ fallbackHeight, rows }: { fallbackHeight: number; rows: I
         size="small"
         tableLayout="auto"
         virtual
+        onRow={handleRow}
       />
     </div>
   );
@@ -222,7 +236,11 @@ export function AnalysisTabs({
   }, []);
 
   const handleSelectPackage = useCallback((row: PackageRow) => {
-    onDetailsSelectionChange({ kind: 'package', id: row.id });
+    onDetailsSelectionChange({ kind: 'package', row });
+  }, [onDetailsSelectionChange]);
+
+  const handleSelectIssue = useCallback((row: IssueRow) => {
+    onDetailsSelectionChange({ kind: 'issue', row });
   }, [onDetailsSelectionChange]);
 
   return (
@@ -258,7 +276,13 @@ export function AnalysisTabs({
         return {
           key: tab.id,
           label: tab.label,
-          children: <IssuesTable rows={viewModel.issueRows} fallbackHeight={tableHeight} />,
+          children: (
+            <IssuesTable
+              rows={viewModel.issueRows}
+              fallbackHeight={tableHeight}
+              onSelectIssue={handleSelectIssue}
+            />
+          ),
         };
       })}
     />
