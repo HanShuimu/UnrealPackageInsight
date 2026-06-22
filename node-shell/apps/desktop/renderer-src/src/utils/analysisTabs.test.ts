@@ -1,8 +1,18 @@
 import { describe, expect, test } from 'vitest';
 import type { AnalysisResult } from '../types/upi';
-import { buildAnalysisTabs } from './analysisTabs';
+import { buildAnalysisTabs, type AnalysisTabModel } from './analysisTabs';
 
 const expectedTabIds = ['overview', 'packages', 'issues'];
+const analysisTabContractIds: AnalysisTabModel['id'][] = ['overview', 'packages', 'issues'];
+void analysisTabContractIds;
+
+// @ts-expect-error raw is not part of the public analysis tabs ID contract.
+const rawTabIdIsNotAnalysisTabsId: AnalysisTabModel['id'] = 'raw';
+void rawTabIdIsNotAnalysisTabsId;
+
+// @ts-expect-error raw is not part of the public analysis tabs contract.
+const rawTabIsNotAnalysisTabsModel: AnalysisTabModel = { id: 'raw', label: 'Raw', kind: 'raw' };
+void rawTabIsNotAnalysisTabsModel;
 
 describe('buildAnalysisTabs', () => {
   test.each([

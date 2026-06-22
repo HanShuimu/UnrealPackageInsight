@@ -1,9 +1,14 @@
 import type { AnalysisResult } from '../types/upi';
 import { ANALYSIS_TABS, type AnalysisTabModel as AnalysisViewModelTabModel } from './analysisViewModel';
 
-type LegacyRawTabModel = { id: 'raw'; label: 'Raw'; kind: 'raw' };
+type InternalUnreachableTabSwitchCompatibility = {
+  id: never;
+  label: never;
+  kind: string;
+  field: 'packages';
+};
 
-export type AnalysisTabModel = AnalysisViewModelTabModel | LegacyRawTabModel;
+export type AnalysisTabModel = AnalysisViewModelTabModel | InternalUnreachableTabSwitchCompatibility;
 
 export function buildAnalysisTabs(_result: AnalysisResult | null): AnalysisViewModelTabModel[] {
   return ANALYSIS_TABS;
