@@ -165,12 +165,6 @@ function renderTabContent(tab: AnalysisTabModel, result: AnalysisResult, height:
       return <TablePane rows={result[tab.field] ?? []} fallbackHeight={height} />;
     case 'issues':
       return <IssuesTable issues={result.issues ?? []} fallbackHeight={height} />;
-    case 'raw':
-      return (
-        <Typography.Paragraph code>
-          {formatValue(result)}
-        </Typography.Paragraph>
-      );
     default:
       return null;
   }
