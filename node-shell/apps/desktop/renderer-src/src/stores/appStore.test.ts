@@ -62,6 +62,7 @@ function createClient(overrides: Partial<UpiClient> = {}): UpiClient {
     submitAesKeyAndRetry: async () => ({ status: 'OK', packages: [], compressedBlocks: [] }),
     clearAesKey: async () => true,
     chooseBackend: async (request) => request.selectedId || '',
+    requestBackendSelection: async () => null,
     ...overrides,
   };
 }
@@ -287,6 +288,28 @@ describe('appStore', () => {
       },
       { type: 'analyze', value: selectedUcas },
     ]);
+  });
+
+  test('opens backend selection on demand for the current selected file', async () => {
+    const selectedUcas = 'C:\\Paks\\pakchunk0-Windows.ucas';
+    const resolvedUtoc = 'C:\\Paks\\pakchunk0-Windows.utoc';
+    const store = createAppStore(
+      createClient({
+        requestBackendSelection: async (filePath) => ({
+          ...createBackendSelection(resolvedUtoc),
+          analysisFilePath: filePath,
+        }),
+      }),
+    );
+
+    await store.getState().analyzeFile(selectedUcas);
+    await store.getState().openBackendSelection();
+
+    expect(store.getState().dialog.backendSelection).toEqual({
+      ...createBackendSelection(resolvedUtoc),
+      analysisFilePath: selectedUcas,
+    });
+    expect(store.getState().statusText).toBe('Choose backend');
   });
 
   test('stale backend cancel error does not overwrite newer same-file analysis', async () => {

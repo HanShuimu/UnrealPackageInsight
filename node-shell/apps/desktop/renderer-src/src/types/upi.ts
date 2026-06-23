@@ -56,6 +56,7 @@ export type BackendSelectionRequest = {
 
 export type AnalysisResult = {
   status?: IpcStatus;
+  backendId?: string;
   issues?: Issue[];
   overview?: Record<string, unknown>;
   packages?: unknown[];
@@ -73,4 +74,5 @@ export type UpiClient = {
   submitAesKeyAndRetry(filePath: string, aesKey: string): Promise<AnalysisResult>;
   clearAesKey(): Promise<boolean>;
   chooseBackend(request: BackendSelectionRequest): Promise<string>;
+  requestBackendSelection(filePath: string): Promise<BackendSelectionRequest | null>;
 };

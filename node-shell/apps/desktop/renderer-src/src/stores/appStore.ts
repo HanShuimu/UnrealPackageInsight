@@ -33,6 +33,7 @@ export type AppState = {
   analyzeFile(filePath: string): Promise<void>;
   submitAesKey(aesKey: string): Promise<void>;
   cancelAesDialog(): void;
+  openBackendSelection(): Promise<void>;
   chooseBackend(selectedId: string): Promise<void>;
   cancelBackendDialog(): void;
 };
@@ -123,6 +124,17 @@ function isCurrentBackendSelection(
 
 function isSameAnalysisContext(state: AppState, filePath: string | undefined, requestId: number): boolean {
   return state.analysisRequestId === requestId && (!filePath || state.selectedFilePath === filePath);
+}
+
+function normalizeBackendSelection(
+  backendSelection: BackendSelectionRequest,
+  analysisFilePath: string,
+): BackendSelectionRequest {
+  return {
+    ...backendSelection,
+    filePath: backendSelection.filePath || analysisFilePath,
+    analysisFilePath,
+  };
 }
 
 function getAesStatusText(result: AnalysisResult): string {
@@ -224,11 +236,7 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
         }
 
         if (result.backendSelection) {
-          const backendSelection = {
-            ...result.backendSelection,
-            filePath: result.backendSelection.filePath || filePath,
-            analysisFilePath: filePath,
-          };
+          const backendSelection = normalizeBackendSelection(result.backendSelection, filePath);
           set({
             analysisResult: result,
             dialog: {
@@ -342,6 +350,48 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
           aesMessage: DEFAULT_AES_MESSAGE,
         },
       }));
+    },
+
+    async openBackendSelection() {
+      const filePath = get().selectedFilePath;
+      if (!filePath) {
+        set({ statusText: 'Select a container first' });
+        return;
+      }
+
+      const requestId = get().analysisRequestId;
+      set({ statusText: 'Loading backend choices...' });
+
+      try {
+        const backendSelectionRequest = await client.requestBackendSelection(filePath);
+        if (!isSameAnalysisContext(get(), filePath, requestId)) {
+          return;
+        }
+
+        if (!backendSelectionRequest) {
+          set({ statusText: 'No backend choices' });
+          return;
+        }
+
+        set((state) => ({
+          dialog: {
+            ...state.dialog,
+            backendSelection: normalizeBackendSelection(backendSelectionRequest, filePath),
+            backendSelectionRequestId: requestId,
+          },
+          statusText: 'Choose backend',
+        }));
+      } catch (error) {
+        if (!isSameAnalysisContext(get(), filePath, requestId)) {
+          return;
+        }
+
+        set({
+          analysisResult: createErrorResult('renderer.backend_selection_failed', error),
+          dialog: createDialogState(),
+          statusText: 'Backend selection failed',
+        });
+      }
     },
 
     async chooseBackend(selectedId: string) {

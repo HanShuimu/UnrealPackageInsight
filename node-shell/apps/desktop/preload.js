@@ -24,4 +24,8 @@ contextBridge.exposeInMainWorld('upi', {
   chooseBackend(request) {
     return ipcRenderer.invoke('backend:choose', request);
   },
+
+  requestBackendSelection(filePath) {
+    return ipcRenderer.invoke('backend:requestSelection', filePath);
+  },
 });

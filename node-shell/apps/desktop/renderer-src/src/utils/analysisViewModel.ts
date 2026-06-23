@@ -76,6 +76,11 @@ function toFiniteNumber(value: unknown): number | undefined {
     return value;
   }
 
+  if (typeof value === 'bigint') {
+    const numberValue = Number(value);
+    return Number.isFinite(numberValue) ? numberValue : undefined;
+  }
+
   if (typeof value === 'string' && value.trim() !== '') {
     const numberValue = Number(value);
     return Number.isFinite(numberValue) ? numberValue : undefined;
@@ -84,8 +89,29 @@ function toFiniteNumber(value: unknown): number | undefined {
   return undefined;
 }
 
+function firstFiniteNumber(values: unknown[]): number | undefined {
+  for (const value of values) {
+    const numberValue = toFiniteNumber(value);
+
+    if (numberValue !== undefined) {
+      return numberValue;
+    }
+  }
+
+  return undefined;
+}
+
 function firstPathValue(record: Record<string, unknown>): string | undefined {
-  const values = [record.packagePath, record.path, record.fullPath, record.relativePath, record.name];
+  const values = [
+    record.packagePath,
+    record.package_path,
+    record.path,
+    record.fullPath,
+    record.full_path,
+    record.relativePath,
+    record.relative_path,
+    record.name,
+  ];
 
   for (const value of values) {
     if (typeof value !== 'string') {
@@ -223,9 +249,22 @@ export function buildPackageRows(result: AnalysisResult | null): PackageRow[] {
 
     const fileName = fileNameFromPath(fullPath);
     const type = typeFromFileName(fileName);
-    const size = toFiniteNumber(packageEntry.size ?? packageEntry.diskSize);
-    const compressedSize = toFiniteNumber(packageEntry.compressedSize);
-    const physicalOrder = toFiniteNumber(packageEntry.order) ?? toFiniteNumber(packageEntry.physicalOrder);
+    const size = firstFiniteNumber([
+      packageEntry.size,
+      packageEntry.diskSize,
+      packageEntry.disk_size,
+      packageEntry.uncompressedSize,
+      packageEntry.uncompressed_size,
+    ]);
+    const compressedSize = firstFiniteNumber([
+      packageEntry.compressedSize,
+      packageEntry.compressed_size,
+    ]);
+    const physicalOrder = firstFiniteNumber([
+      packageEntry.order,
+      packageEntry.physicalOrder,
+      packageEntry.physical_order,
+    ]);
     const row: PackageRowDraft = {
       fullPath,
       fileName,

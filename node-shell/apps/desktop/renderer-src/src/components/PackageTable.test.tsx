@@ -153,7 +153,7 @@ describe('PackageTable', () => {
     const table = screen.getByTestId('mock-table');
     expect(table).toHaveAttribute('data-bordered', 'true');
     expect(table).toHaveAttribute('data-pagination', 'false');
-    expect(table).toHaveAttribute('data-scroll-x', '980');
+    expect(table).toHaveAttribute('data-scroll-x', '880');
     expect(table).toHaveAttribute('data-scroll-y', '420');
     expect(table).toHaveAttribute('data-size', 'small');
     expect(table).toHaveAttribute('data-table-layout', 'auto');
@@ -170,8 +170,8 @@ describe('PackageTable', () => {
       { dataIndex: 'size', key: 'size', title: 'Size', width: 120 },
       { dataIndex: 'compressedSize', key: 'compressedSize', title: 'Compressed', width: 140 },
       { dataIndex: 'physicalOrder', key: 'physicalOrder', title: 'Order', width: 100 },
-      { dataIndex: 'type', key: 'type', title: 'Type', width: 100 },
     ]);
+    expect(columns.some((column) => column.key === 'type' || column.title === 'Type')).toBe(false);
 
     const firstColumn = columns[0];
     expect(firstColumn).toMatchObject({
@@ -191,7 +191,6 @@ describe('PackageTable', () => {
     expect(columnByKey('size').sorter).toEqual(expect.any(Function));
     expect(columnByKey('compressedSize').sorter).toEqual(expect.any(Function));
     expect(columnByKey('physicalOrder').sorter).toEqual(expect.any(Function));
-    expect(columnByKey('type').sorter).toBeUndefined();
   });
 
   test('sorts the data source by package file name before rendering', () => {

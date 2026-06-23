@@ -18,6 +18,7 @@ const mockHarness = vi.hoisted(() => ({
     chooseBackend: vi.fn(() => Promise.resolve()),
     loadBackendInfo: vi.fn(() => Promise.resolve()),
     openDirectory: vi.fn(() => Promise.resolve()),
+    openBackendSelection: vi.fn(() => Promise.resolve()),
     submitAesKey: vi.fn(() => Promise.resolve()),
   },
   observers: [] as ObserverRecord[],
@@ -109,6 +110,7 @@ function createMockState(overrides: Partial<AppState> = {}): AppState {
     isOpeningDirectory: false,
     loadBackendInfo: mockHarness.actions.loadBackendInfo,
     openDirectory: mockHarness.actions.openDirectory,
+    openBackendSelection: mockHarness.actions.openBackendSelection,
     openDirectoryRequestId: 0,
     scan: null,
     selectedFilePath: '',
@@ -319,6 +321,28 @@ describe('App', () => {
     expect(screen.getByLabelText('Backend: 2 backends available')).toHaveClass('status-value');
   });
 
+  test('shows the backend used by the current analysis result in the shell header', () => {
+    mockHarness.state = createMockState({
+      analysisResult: {
+        status: 'OK',
+        backendId: 'ue-5.7-shipping',
+      },
+      backendInfo: {
+        status: 'OK',
+        backendCount: 2,
+        backends: [
+          { id: 'ue-5.7-development', label: 'UE 5.7 Development' },
+          { id: 'ue-5.7-shipping', label: 'UE 5.7 Shipping' },
+        ],
+      },
+    });
+
+    render(<App />);
+
+    expect(screen.getByLabelText('Backend: UE 5.7 Shipping (ue-5.7-shipping)')).toBeInTheDocument();
+    expect(screen.getByText('UE 5.7 Shipping')).toBeInTheDocument();
+  });
+
   test('loads backend info on mount and opens directories from the toolbar', async () => {
     render(<App />);
 
@@ -327,6 +351,18 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open' }));
 
     expect(mockHarness.actions.openDirectory).toHaveBeenCalledTimes(1);
+  });
+
+  test('opens the backend chooser from the toolbar for the selected container', () => {
+    mockHarness.state = createMockState({
+      selectedFilePath: 'C:\\Paks\\pakchunk0-Windows.pak',
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Backend' }));
+
+    expect(mockHarness.actions.openBackendSelection).toHaveBeenCalledTimes(1);
   });
 
   test('passes measured region heights to virtualized regions', async () => {

@@ -118,6 +118,40 @@ describe('buildPackageRows', () => {
     ]);
   });
 
+  test('normalizes native decoded bigint size fields for Pak and IoStore package rows', () => {
+    expect(buildPackageRows({
+      packages: [
+        {
+          packagePath: '../../../Engine/Config/Base.ini',
+          size: 1300n,
+          compressedSize: 900n,
+          order: 1,
+        },
+        {
+          package_path: '../../../Game/Zeta/Beta.uasset',
+          disk_size: 3000n,
+          compressed_size: 1200n,
+          physical_order: 8,
+        },
+      ],
+    })).toEqual([
+      expect.objectContaining({
+        id: '../../../Engine/Config/Base.ini',
+        fullPath: '../../../Engine/Config/Base.ini',
+        size: 1300,
+        compressedSize: 900,
+        physicalOrder: 1,
+      }),
+      expect.objectContaining({
+        id: '../../../Game/Zeta/Beta.uasset',
+        fullPath: '../../../Game/Zeta/Beta.uasset',
+        size: 3000,
+        compressedSize: 1200,
+        physicalOrder: 8,
+      }),
+    ]);
+  });
+
   test('falls back to the next path field when packagePath is blank', () => {
     expect(buildPackageRows({
       packages: [

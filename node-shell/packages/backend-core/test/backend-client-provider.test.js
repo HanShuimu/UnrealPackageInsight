@@ -92,7 +92,40 @@ test('provider throws structured error for remembered missing backend id', async
   );
 });
 
-test('provider multiple-candidate error includes candidate metadata', async () => {
+test('provider resolves multiple compatible candidates to the preferred latest Development backend', async () => {
+  const filePath = 'C:\\Paks\\pakchunk0-Windows.pak';
+  const provider = createBackendClientProvider({
+    manifests: [
+      createPakManifest({
+        id: 'ue-5.6.0-win32-x64-development',
+        dllPath: 'C:\\backend\\old-dev.dll',
+        engineVersion: '5.6.0',
+      }),
+      createPakManifest({
+        id: 'ue-5.7.4-win32-x64-shipping',
+        dllPath: 'C:\\backend\\ship.dll',
+        configuration: 'Shipping',
+      }),
+      createPakManifest({
+        id: 'ue-5.7.4-win32-x64-development',
+        dllPath: 'C:\\backend\\dev.dll',
+        engineVersion: '5.7.4',
+      }),
+    ],
+    koffi: {},
+    probeContainerFile: () => ({ containerType: 'pak', pakFormatVersion: 12 }),
+    backendClientFactory({ dllPath }) {
+      return { dllPath };
+    },
+  });
+
+  assert.deepEqual(await provider.resolveForFile(filePath), {
+    backendId: 'ue-5.7.4-win32-x64-development',
+    client: { dllPath: 'C:\\backend\\dev.dll' },
+  });
+});
+
+test('provider exposes compatible candidate metadata for an explicit chooser', () => {
   const filePath = 'C:\\Paks\\pakchunk0-Windows.pak';
   const provider = createBackendClientProvider({
     manifests: [
@@ -110,26 +143,22 @@ test('provider multiple-candidate error includes candidate metadata', async () =
     },
   });
 
-  await assert.rejects(
-    provider.resolveForFile(filePath),
-    (error) => {
-      assert.equal(error.code, 'backend.multiple_candidates');
-      assert.equal(error.filePath, filePath);
-      assert.deepEqual(error.candidates, [
-        {
-          id: 'ue-5.7.4-win32-x64-development',
-          label: 'UE 5.7.4 Development',
-          engineVersion: '5.7.4',
-          configuration: 'Development',
-        },
-        {
-          id: 'ue-5.7.4-win32-x64-shipping',
-          label: 'UE 5.7.4 Shipping',
-          engineVersion: '5.7.4',
-          configuration: 'Shipping',
-        },
-      ]);
-      return true;
-    },
-  );
+  assert.deepEqual(provider.getCandidateSelection(filePath), {
+    filePath,
+    probe: { containerType: 'pak', pakFormatVersion: 12 },
+    candidates: [
+      {
+        id: 'ue-5.7.4-win32-x64-development',
+        label: 'UE 5.7.4 Development',
+        engineVersion: '5.7.4',
+        configuration: 'Development',
+      },
+      {
+        id: 'ue-5.7.4-win32-x64-shipping',
+        label: 'UE 5.7.4 Shipping',
+        engineVersion: '5.7.4',
+        configuration: 'Shipping',
+      },
+    ],
+  });
 });

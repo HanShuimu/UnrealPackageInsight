@@ -205,6 +205,24 @@ function createIpcHandlers({
       state.pendingBackendSelections.delete(filePath);
       return selectedId;
     },
+
+    requestBackendSelection(filePath) {
+      if (!filePath || !state.analysisService || typeof state.analysisService.getBackendSelection !== 'function') {
+        return null;
+      }
+
+      const selection = state.analysisService.getBackendSelection(filePath);
+      const candidates = Array.isArray(selection?.candidates) ? selection.candidates : [];
+      if (!selection || candidates.length === 0 || !selection.filePath) {
+        return selection || null;
+      }
+
+      state.pendingBackendSelections.set(selection.filePath, {
+        candidates,
+        candidateIds: new Set(candidates.map((candidate) => candidate.id)),
+      });
+      return selection;
+    },
   };
 }
 
@@ -217,6 +235,7 @@ function registerIpcHandlers(ipcMainModule, handlers) {
   ));
   ipcMainModule.handle('analysis:clearAesKey', () => handlers.clearAesKey());
   ipcMainModule.handle('backend:choose', (_event, request) => handlers.chooseBackend(request));
+  ipcMainModule.handle('backend:requestSelection', (_event, filePath) => handlers.requestBackendSelection(filePath));
 }
 
 const desktopState = createDesktopState();

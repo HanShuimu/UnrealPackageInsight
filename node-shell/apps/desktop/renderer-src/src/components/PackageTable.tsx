@@ -90,12 +90,6 @@ const columns: ColumnsType<PackageRow> = [
     sorter: compareNumericField('physicalOrder'),
     render: (physicalOrder: PackageRow['physicalOrder']) => physicalOrder ?? '',
   },
-  {
-    dataIndex: 'type',
-    key: 'type',
-    title: 'Type',
-    width: 100,
-  },
 ];
 
 export function PackageTable({ rows, height, onSelectPackage }: PackageTableProps) {
@@ -117,7 +111,7 @@ export function PackageTable({ rows, height, onSelectPackage }: PackageTableProp
       dataSource={dataSource}
       pagination={false}
       rowKey="id"
-      scroll={{ x: 980, y: height }}
+      scroll={{ x: 880, y: height }}
       size="small"
       tableLayout="auto"
       virtual

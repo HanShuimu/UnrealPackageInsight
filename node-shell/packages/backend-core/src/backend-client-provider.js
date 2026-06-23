@@ -1,6 +1,15 @@
 const { createBackendClient } = require('./backend-client.js');
 const { selectBackendCandidates } = require('./backend-selector.js');
 
+function backendCandidateMetadata(candidate) {
+  return {
+    id: candidate.id,
+    label: `UE ${candidate.engineVersion} ${candidate.configuration}`,
+    engineVersion: candidate.engineVersion,
+    configuration: candidate.configuration,
+  };
+}
+
 function createBackendClientProvider({
   manifests,
   koffi,
@@ -64,24 +73,23 @@ function createBackendClientProvider({
     const probe = probeContainerFile(filePath, { filePaths });
     const candidates = selectBackendCandidates({ probe, manifests });
     if (candidates.length === 0) {
-      throw createNoCompatibleBackendError({ probe });
+      throw createNoCompatibleBackendError({ filePath, probe });
     }
-    if (candidates.length > 1) {
-      const error = new Error('Multiple compatible backends found.');
-      error.code = 'backend.multiple_candidates';
-      error.probe = probe;
-      error.candidates = candidates.map((candidate) => ({
-        id: candidate.id,
-        label: `UE ${candidate.engineVersion} ${candidate.configuration}`,
-        engineVersion: candidate.engineVersion,
-        configuration: candidate.configuration,
-      }));
-      error.filePath = filePath;
-      throw error;
-    }
+
     return {
       backendId: candidates[0].id,
       client: getBackendClient(candidates[0].id, { filePath }),
+    };
+  }
+
+  function getCandidateSelection(filePath, filePaths = []) {
+    const probe = probeContainerFile(filePath, { filePaths });
+    const candidates = selectBackendCandidates({ probe, manifests });
+
+    return {
+      filePath,
+      probe,
+      candidates: candidates.map(backendCandidateMetadata),
     };
   }
 
@@ -89,6 +97,7 @@ function createBackendClientProvider({
     setSelection,
     getManifest,
     getBackendClient,
+    getCandidateSelection,
     resolveForFile,
   };
 }

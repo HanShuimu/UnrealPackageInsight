@@ -15,7 +15,7 @@ import { BackendChooserDialog } from './components/BackendChooserDialog';
 import { DetailsPane } from './components/DetailsPane';
 import { PackageTree } from './components/PackageTree';
 import { useAppStore } from './stores/useAppStore';
-import type { BackendInfo } from './types/upi';
+import type { AnalysisResult, BackendInfo } from './types/upi';
 import type { DetailSelection } from './utils/analysisViewModel';
 import {
   OPENED_CONTAINERS_MAX_WIDTH,
@@ -113,7 +113,27 @@ function useMeasuredHeight<T extends HTMLElement>(): [RefCallback<T>, number] {
   return [ref, height];
 }
 
-function backendLabel(backendInfo: BackendInfo | null): string {
+function currentBackendId(result: AnalysisResult | null): string {
+  return typeof result?.backendId === 'string' && result.backendId.trim() !== ''
+    ? result.backendId.trim()
+    : '';
+}
+
+function backendInfoById(backendInfo: BackendInfo | null, backendId: string) {
+  return backendInfo?.backends?.find((backend) => backend.id === backendId) ?? null;
+}
+
+function backendFullLabel(backend: { id?: string; label: string }): string {
+  return backend.id ? `${backend.label} (${backend.id})` : backend.label;
+}
+
+function backendLabel(backendInfo: BackendInfo | null, result: AnalysisResult | null): string {
+  const backendId = currentBackendId(result);
+  if (backendId) {
+    const backend = backendInfoById(backendInfo, backendId);
+    return backend ? backendFullLabel(backend) : backendId;
+  }
+
   if (!backendInfo) {
     return 'Not loaded';
   }
@@ -151,7 +171,16 @@ function backendLabel(backendInfo: BackendInfo | null): string {
   return 'Ready';
 }
 
-function backendPillLabel(backendInfo: BackendInfo | null, fallback: string): string {
+function backendPillLabel(
+  backendInfo: BackendInfo | null,
+  result: AnalysisResult | null,
+  fallback: string,
+): string {
+  const backendId = currentBackendId(result);
+  if (backendId) {
+    return backendInfoById(backendInfo, backendId)?.label ?? backendId;
+  }
+
   if (!backendInfo) {
     return fallback;
   }
@@ -185,6 +214,7 @@ export default function App() {
   const analyzeFile = useAppStore((state) => state.analyzeFile);
   const submitAesKey = useAppStore((state) => state.submitAesKey);
   const cancelAesDialog = useAppStore((state) => state.cancelAesDialog);
+  const openBackendSelection = useAppStore((state) => state.openBackendSelection);
   const chooseBackend = useAppStore((state) => state.chooseBackend);
   const cancelBackendDialog = useAppStore((state) => state.cancelBackendDialog);
   const [treeContentRef, treeHeight] = useMeasuredHeight<HTMLDivElement>();
@@ -306,8 +336,8 @@ export default function App() {
     }
   }, []);
 
-  const backendText = backendLabel(backendInfo);
-  const backendPillText = backendPillLabel(backendInfo, backendText);
+  const backendText = backendLabel(backendInfo, analysisResult);
+  const backendPillText = backendPillLabel(backendInfo, analysisResult, backendText);
   const packageRootLabel = scan?.root || 'No package directory opened';
   const selectedPackageId = detailSelection?.kind === 'package' ? detailSelection.row.id : '';
   const shellBusy = isOpeningDirectory || isAnalyzing;
@@ -333,6 +363,7 @@ export default function App() {
           </Button>
           <Button
             className="toolbar-button backend-toolbar-button"
+            onClick={() => void openBackendSelection()}
             title={dialog.backendSelection ? 'Backend selection is open' : backendText}
             type={dialog.backendSelection ? 'primary' : 'default'}
           >
