@@ -21,6 +21,15 @@ const publicHeaderPath = path.join(
   'Public',
   'UnrealPackageInsightBackend.h',
 );
+const containerExtractorPath = path.join(
+  repoRoot,
+  'ue-backend',
+  'UnrealPackageInsightBackend',
+  'Source',
+  'UnrealPackageInsightBackend',
+  'Private',
+  'ContainerExtractor.cpp',
+);
 
 test('Unreal Build.cs uses Program-local generated protocol includes only', () => {
   const source = fs.readFileSync(buildRulesPath, 'utf8');
@@ -51,5 +60,17 @@ test('native public ABI declares container extraction exports', () => {
   assert.match(
     source,
     /UPI_BACKEND_API\s+int32_t\s+UPI_ExtractIoStoreV1\(const char\*\s+UtocPathUtf8,\s+const char\*\s+UcasPathUtf8,\s+const char\*\s+OutputDirectoryUtf8,\s+const char\*\s+AesKeyUtf8OrNull,\s+uint8_t\*\s+OutBytes,\s+int32_t\s+OutCapacity,\s+int32_t\*\s+RequiredSize\);/,
+  );
+});
+
+test('native extraction follows approved IoStore and AES spec details', () => {
+  const source = fs.readFileSync(containerExtractorPath, 'utf8');
+
+  assert.equal(source.includes('return OutKey.IsValid();'), false);
+  assert.match(source, /bOutHasKey\s*=\s*true;\s*return\s+true;/);
+  assert.equal(source.includes('&OrderMap'), false);
+  assert.match(
+    source,
+    /ExtractFilesFromIoStoreContainer\(\s*\*OutResult\.ContainerPath,\s*\*OutputDirectory,\s*KeyChain,\s*nullptr,\s*nullptr,\s*nullptr,\s*&bIsSigned\s*\)/,
   );
 });

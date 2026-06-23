@@ -1,6 +1,5 @@
 #include "ContainerExtractor.h"
 
-#include "Containers/Map.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformProcess.h"
 #include "Misc/AES.h"
@@ -66,7 +65,7 @@ namespace
 		}
 
 		bOutHasKey = true;
-		return OutKey.IsValid();
+		return true;
 	}
 
 	bool UPI_EnsureOutputDirectory(const FString& OutputDirectory)
@@ -246,15 +245,13 @@ bool UPI_ExtractIoStoreFile(const FString& UtocPath, const FString& UcasPath, co
 		UPI_AddDefaultKeyToKeyChain(ParsedKey, KeyChain);
 	}
 
-	TMap<FString, uint64> OrderMap;
-
 	bool bIsSigned = false;
 	const bool bExtracted = ExtractFilesFromIoStoreContainer(
 		*OutResult.ContainerPath,
 		*OutputDirectory,
 		KeyChain,
 		nullptr,
-		&OrderMap,
+		nullptr,
 		nullptr,
 		&bIsSigned);
 
@@ -265,6 +262,5 @@ bool UPI_ExtractIoStoreFile(const FString& UtocPath, const FString& UcasPath, co
 		return false;
 	}
 
-	OutResult.ExtractedFileCount = static_cast<uint32>(OrderMap.Num());
 	return true;
 }
