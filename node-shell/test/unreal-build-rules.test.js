@@ -74,3 +74,22 @@ test('native extraction follows approved IoStore and AES spec details', () => {
     /ExtractFilesFromIoStoreContainer\(\s*\*OutResult\.ContainerPath,\s*\*OutputDirectory,\s*KeyChain,\s*nullptr,\s*nullptr,\s*nullptr,\s*&bIsSigned\s*\)/,
   );
 });
+
+test('native extraction hardens encrypted container key handling and preflight', () => {
+  const source = fs.readFileSync(containerExtractorPath, 'utf8');
+
+  assert.match(source, /SecondaryEncryptionKeys/);
+  assert.match(source, /EncryptionKeyGuid\.IsValid\(\)/);
+  assert.match(source, /UPI_AddKeyToKeyChain\(TocHeader\.EncryptionKeyGuid,\s*ParsedKey,\s*KeyChain\)/);
+  assert.match(source, /UPI_ResolveIoStorePaths\(UtocPath,\s*UcasPath/);
+
+  assert.match(source, /UPI_ReadPakIndexData/);
+  assert.match(source, /UPI_CanDecryptPakIndexWithKey/);
+  assert.match(source, /bEncryptedIndex/);
+  assert.match(source, /Entry\.IsEncrypted\(\)/);
+  assert.match(source, /UPI_PreflightPakForExtraction\(PakPath,\s*ParsedKey,\s*bHasKey,\s*PakEncryptionKeyGuid\)/);
+
+  assert.match(source, /UPI_CanCreateFile\(TempResponseFile\)/);
+  assert.match(source, /ExecuteUnrealPak\(\*CommandLine\)/);
+  assert.ok(source.indexOf('UPI_CanCreateFile(TempResponseFile)') < source.indexOf('ExecuteUnrealPak(*CommandLine)'));
+});

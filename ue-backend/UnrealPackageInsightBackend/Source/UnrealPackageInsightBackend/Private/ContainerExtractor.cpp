@@ -1,18 +1,46 @@
 #include "ContainerExtractor.h"
 
+#include "CoreGlobals.h"
+#include "HAL/CriticalSection.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformProcess.h"
+#include "HAL/PlatformFileManager.h"
+#include "IO/IoStore.h"
+#include "IPlatformFilePak.h"
 #include "Misc/AES.h"
 #include "Misc/Base64.h"
+#include "Misc/CommandLine.h"
+#include "Misc/ConfigCacheIni.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Guid.h"
 #include "Misc/KeyChainUtilities.h"
 #include "Misc/Paths.h"
+#include "Misc/SecureHash.h"
+#include "Serialization/Archive.h"
+#include "Templates/RefCounting.h"
+#include "Templates/UniquePtr.h"
 #include "PakFileUtilities.h"
 #include "IoStoreUtilities.h"
 
 namespace
 {
+	FCriticalSection GUpiExtractPakRuntimeInitCriticalSection;
+
+	void UPI_EnsureMinimalUnrealRuntimeForPak()
+	{
+		FScopeLock Lock(&GUpiExtractPakRuntimeInitCriticalSection);
+
+		if (!FCommandLine::IsInitialized())
+		{
+			FCommandLine::Set(TEXT(""));
+		}
+
+		if (GConfig == nullptr)
+		{
+			FConfigCacheIni::InitializeConfigSystem();
+		}
+	}
+
 	int32 UPI_HexValue(TCHAR Char)
 	{
 		if (Char >= TEXT('0') && Char <= TEXT('9'))
@@ -68,6 +96,75 @@ namespace
 		return true;
 	}
 
+	FString UPI_NormalizeFilename(FString Path)
+	{
+		Path.ReplaceInline(TEXT("\\"), TEXT("/"));
+		FPaths::NormalizeFilename(Path);
+		return Path;
+	}
+
+	bool UPI_IsIoStoreDataExtension(const FString& Extension)
+	{
+		return Extension.Equals(TEXT("utoc"), ESearchCase::IgnoreCase) ||
+			Extension.Equals(TEXT("ucas"), ESearchCase::IgnoreCase);
+	}
+
+	FString UPI_StripUcasPartitionSuffix(FString BaseFilename)
+	{
+		const int32 SuffixIndex = BaseFilename.Find(TEXT("_s"), ESearchCase::IgnoreCase, ESearchDir::FromEnd);
+		if (SuffixIndex == INDEX_NONE)
+		{
+			return BaseFilename;
+		}
+
+		for (int32 Index = SuffixIndex + 2; Index < BaseFilename.Len(); ++Index)
+		{
+			if (!FChar::IsDigit(BaseFilename[Index]))
+			{
+				return BaseFilename;
+			}
+		}
+
+		return BaseFilename.Left(SuffixIndex);
+	}
+
+	FString UPI_BasePathFromIoStorePath(const FString& Path)
+	{
+		FString NormalizedPath = UPI_NormalizeFilename(Path);
+		const FString Extension = FPaths::GetExtension(NormalizedPath);
+		if (!UPI_IsIoStoreDataExtension(Extension))
+		{
+			return NormalizedPath;
+		}
+
+		const FString Directory = FPaths::GetPath(NormalizedPath);
+		const FString BaseFilename = FPaths::GetBaseFilename(NormalizedPath);
+		const FString ContainerBaseFilename = Extension.Equals(TEXT("ucas"), ESearchCase::IgnoreCase)
+			? UPI_StripUcasPartitionSuffix(BaseFilename)
+			: BaseFilename;
+
+		return Directory.IsEmpty() ? ContainerBaseFilename : Directory / ContainerBaseFilename;
+	}
+
+	FString UPI_ResolveIoStorePaths(const FString& UtocPath, const FString& UcasPath)
+	{
+		const FString PreferredPath = !UtocPath.IsEmpty() ? UtocPath : UcasPath;
+		const FString BasePath = UPI_BasePathFromIoStorePath(PreferredPath);
+		return BasePath.IsEmpty() ? FString() : BasePath + TEXT(".utoc");
+	}
+
+	bool UPI_ReadTocHeader(const FString& UtocPath, FIoStoreTocHeader& OutHeader)
+	{
+		TUniquePtr<FArchive> Reader(IFileManager::Get().CreateFileReader(*UtocPath));
+		if (!Reader.IsValid() || Reader->TotalSize() < static_cast<int64>(sizeof(FIoStoreTocHeader)))
+		{
+			return false;
+		}
+
+		Reader->Serialize(&OutHeader, sizeof(FIoStoreTocHeader));
+		return !Reader->IsError() && OutHeader.CheckMagic();
+	}
+
 	bool UPI_EnsureOutputDirectory(const FString& OutputDirectory)
 	{
 		if (OutputDirectory.IsEmpty())
@@ -79,10 +176,31 @@ namespace
 		return FileManager.MakeDirectory(*OutputDirectory, true) && FileManager.DirectoryExists(*OutputDirectory);
 	}
 
-	FString UPI_CreateTemporaryPakCryptoKeysFile(const FAES::FAESKey& Key)
+	bool UPI_CanCreateFile(const FString& Filename)
+	{
+		TUniquePtr<FArchive> Writer(IFileManager::Get().CreateFileWriter(*Filename));
+		const bool bCanCreate = Writer.IsValid() && !Writer->IsError();
+		Writer.Reset();
+		IFileManager::Get().Delete(*Filename, false, true);
+		return bCanCreate;
+	}
+
+	FString UPI_CreateTemporaryPakCryptoKeysFile(const FAES::FAESKey& Key, const FGuid& EncryptionKeyGuid)
 	{
 		const FString TempFilename = FPaths::CreateTempFilename(FPlatformProcess::UserTempDir(), TEXT("upi-cryptokeys-"), TEXT(".json"));
 		const FString KeyBase64 = FBase64::Encode(Key.Key, FAES::FAESKey::KeySize);
+		const FString SecondaryEncryptionKeys = EncryptionKeyGuid.IsValid()
+			? FString::Printf(
+				TEXT("\n")
+				TEXT("    {\n")
+				TEXT("      \"Name\": \"Container\",\n")
+				TEXT("      \"Guid\": \"%s\",\n")
+				TEXT("      \"Key\": \"%s\"\n")
+				TEXT("    }\n")
+				TEXT("  "),
+				*EncryptionKeyGuid.ToString(EGuidFormats::Digits),
+				*KeyBase64)
+			: FString();
 		const FString Contents = FString::Printf(
 			TEXT("{\n")
 			TEXT("  \"EncryptionKey\": {\n")
@@ -90,9 +208,10 @@ namespace
 			TEXT("    \"Guid\": \"00000000000000000000000000000000\",\n")
 			TEXT("    \"Key\": \"%s\"\n")
 			TEXT("  },\n")
-			TEXT("  \"SecondaryEncryptionKeys\": []\n")
+			TEXT("  \"SecondaryEncryptionKeys\": [%s]\n")
 			TEXT("}\n"),
-			*KeyBase64);
+			*KeyBase64,
+			*SecondaryEncryptionKeys);
 
 		return FFileHelper::SaveStringToFile(Contents, *TempFilename) ? TempFilename : FString();
 	}
@@ -113,15 +232,96 @@ namespace
 		return static_cast<uint32>(Lines.Num());
 	}
 
-	void UPI_AddDefaultKeyToKeyChain(const FAES::FAESKey& Key, FKeyChain& OutKeyChain)
+	bool UPI_ReadPakIndexData(const FString& PakPath, const FPakInfo& PakInfo, TArray<uint8>& OutIndexData)
+	{
+		if (PakInfo.IndexOffset < 0 || PakInfo.IndexSize <= 0 || PakInfo.IndexSize > static_cast<int64>(MAX_int32))
+		{
+			return false;
+		}
+
+		TUniquePtr<FArchive> Reader(IFileManager::Get().CreateFileReader(*PakPath));
+		if (!Reader.IsValid())
+		{
+			return false;
+		}
+
+		const int64 TotalSize = Reader->TotalSize();
+		if (PakInfo.IndexOffset > TotalSize || PakInfo.IndexSize > TotalSize - PakInfo.IndexOffset)
+		{
+			return false;
+		}
+
+		Reader->Seek(PakInfo.IndexOffset);
+		OutIndexData.SetNum(static_cast<int32>(PakInfo.IndexSize));
+		Reader->Serialize(OutIndexData.GetData(), PakInfo.IndexSize);
+		return !Reader->IsError();
+	}
+
+	bool UPI_CanDecryptPakIndexWithKey(const FString& PakPath, const FPakInfo& PakInfo, const FAES::FAESKey& Key)
+	{
+		TArray<uint8> IndexData;
+		if (!UPI_ReadPakIndexData(PakPath, PakInfo, IndexData))
+		{
+			return false;
+		}
+
+		FAES::DecryptData(IndexData.GetData(), IndexData.Num(), Key);
+
+		FSHAHash ComputedHash;
+		FSHA1::HashBuffer(IndexData.GetData(), IndexData.Num(), ComputedHash.Hash);
+		return ComputedHash == PakInfo.IndexHash;
+	}
+
+	bool UPI_PreflightPakForExtraction(const FString& PakPath, const FAES::FAESKey& ParsedKey, bool bHasKey, FGuid& OutEncryptionKeyGuid)
+	{
+		UPI_EnsureMinimalUnrealRuntimeForPak();
+
+		IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
+		TRefCountPtr<FPakFile> TrailerOnlyPak = MakeRefCount<FPakFile>(&PlatformFile, *PakPath, false, false);
+		if (!TrailerOnlyPak.IsValid() || !TrailerOnlyPak->IsValid())
+		{
+			return false;
+		}
+
+		const FPakInfo& TrailerInfo = TrailerOnlyPak->GetInfo();
+		OutEncryptionKeyGuid = TrailerInfo.EncryptionKeyGuid;
+		if (TrailerInfo.bEncryptedIndex != 0)
+		{
+			return bHasKey && UPI_CanDecryptPakIndexWithKey(PakPath, TrailerInfo, ParsedKey);
+		}
+
+		TRefCountPtr<FPakFile> PakFile = MakeRefCount<FPakFile>(&PlatformFile, *PakPath, false, true);
+		if (!PakFile.IsValid() || !PakFile->IsValid())
+		{
+			return false;
+		}
+
+		for (FPakFile::FPakEntryIterator It(*PakFile, true); It; ++It)
+		{
+			const FPakEntry& Entry = It.Info();
+			if (Entry.IsEncrypted() && !bHasKey)
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	void UPI_AddKeyToKeyChain(const FGuid& EncryptionKeyGuid, const FAES::FAESKey& Key, FKeyChain& OutKeyChain)
 	{
 		FNamedAESKey NamedKey;
-		NamedKey.Name = TEXT("Default");
-		NamedKey.Guid = FGuid();
+		NamedKey.Name = EncryptionKeyGuid.IsValid()
+			? FString::Printf(TEXT("Container_%s"), *EncryptionKeyGuid.ToString(EGuidFormats::Digits))
+			: FString(TEXT("Default"));
+		NamedKey.Guid = EncryptionKeyGuid;
 		NamedKey.Key = Key;
 
 		OutKeyChain.GetEncryptionKeys().Add(NamedKey.Guid, NamedKey);
-		OutKeyChain.SetPrincipalEncryptionKey(OutKeyChain.GetEncryptionKeys().Find(NamedKey.Guid));
+		if (!EncryptionKeyGuid.IsValid())
+		{
+			OutKeyChain.SetPrincipalEncryptionKey(OutKeyChain.GetEncryptionKeys().Find(NamedKey.Guid));
+		}
 	}
 
 	bool UPI_ValidateCommonInputs(const FString& ContainerPath, const FString& OutputDirectory, FUpiExtractResult& OutResult)
@@ -178,8 +378,23 @@ bool UPI_ExtractPakFile(const FString& PakPath, const FString& OutputDirectory, 
 		return false;
 	}
 
+	FGuid PakEncryptionKeyGuid;
+	if (!UPI_PreflightPakForExtraction(PakPath, ParsedKey, bHasKey, PakEncryptionKeyGuid))
+	{
+		OutResult.Issues.Add(TEXT("pak.extract_failed"));
+		OutResult.ErrorCount = 1;
+		return false;
+	}
+
 	FString TempCryptoKeysFile;
 	const FString TempResponseFile = FPaths::CreateTempFilename(FPlatformProcess::UserTempDir(), TEXT("upi-extract-response-"), TEXT(".txt"));
+	if (!UPI_CanCreateFile(TempResponseFile))
+	{
+		OutResult.Issues.Add(TEXT("pak.extract_failed"));
+		OutResult.ErrorCount = 1;
+		return false;
+	}
+
 	FString CommandLine = FString::Printf(
 		TEXT("-Extract %s %s -ExtractToMountPoint -responseFile=%s"),
 		*UPI_QuoteCommandPath(PakPath),
@@ -188,7 +403,7 @@ bool UPI_ExtractPakFile(const FString& PakPath, const FString& OutputDirectory, 
 
 	if (bHasKey)
 	{
-		TempCryptoKeysFile = UPI_CreateTemporaryPakCryptoKeysFile(ParsedKey);
+		TempCryptoKeysFile = UPI_CreateTemporaryPakCryptoKeysFile(ParsedKey, PakEncryptionKeyGuid);
 		if (TempCryptoKeysFile.IsEmpty())
 		{
 			IFileManager::Get().Delete(*TempResponseFile, false, true);
@@ -222,7 +437,11 @@ bool UPI_ExtractPakFile(const FString& PakPath, const FString& OutputDirectory, 
 bool UPI_ExtractIoStoreFile(const FString& UtocPath, const FString& UcasPath, const FString& OutputDirectory, const FString& AesKey, FUpiExtractResult& OutResult)
 {
 	OutResult = FUpiExtractResult();
-	OutResult.ContainerPath = !UtocPath.IsEmpty() ? UtocPath : UcasPath;
+	const FString PreferredContainerPath = !UtocPath.IsEmpty() ? UtocPath : UcasPath;
+	const FString ResolvedUtocPath = UPI_ResolveIoStorePaths(UtocPath, UcasPath);
+	OutResult.ContainerPath = !ResolvedUtocPath.IsEmpty() && IFileManager::Get().FileExists(*ResolvedUtocPath)
+		? ResolvedUtocPath
+		: PreferredContainerPath;
 	OutResult.OutputDirectory = OutputDirectory;
 
 	if (!UPI_ValidateCommonInputs(OutResult.ContainerPath, OutputDirectory, OutResult))
@@ -242,7 +461,13 @@ bool UPI_ExtractIoStoreFile(const FString& UtocPath, const FString& UcasPath, co
 	FKeyChain KeyChain;
 	if (bHasKey)
 	{
-		UPI_AddDefaultKeyToKeyChain(ParsedKey, KeyChain);
+		UPI_AddKeyToKeyChain(FGuid(), ParsedKey, KeyChain);
+
+		FIoStoreTocHeader TocHeader;
+		if (!ResolvedUtocPath.IsEmpty() && UPI_ReadTocHeader(ResolvedUtocPath, TocHeader) && TocHeader.EncryptionKeyGuid.IsValid())
+		{
+			UPI_AddKeyToKeyChain(TocHeader.EncryptionKeyGuid, ParsedKey, KeyChain);
+		}
 	}
 
 	bool bIsSigned = false;
