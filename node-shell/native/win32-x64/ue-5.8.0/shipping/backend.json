@@ -1,0 +1,21 @@
+{
+  "id": "ue-5.8.0-win32-x64-shipping",
+  "engineVersion": "5.8.0",
+  "hostPlatform": "win32",
+  "hostArch": "x64",
+  "unrealPlatform": "Win64",
+  "configuration": "Shipping",
+  "configurationKey": "shipping",
+  "protocolVersion": 1,
+  "dll": "UnrealPackageInsightBackend.dll",
+  "supports": {
+    "pak": {
+      "versionMin": 1,
+      "versionMax": 12
+    },
+    "iostore": {
+      "tocVersionMin": 1,
+      "tocVersionMax": 8
+    }
+  }
+}
