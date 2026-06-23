@@ -1,5 +1,6 @@
 #include "UnrealPackageInsightBackend.h"
 
+#include "ContainerExtractor.h"
 #include "IoStoreAnalyzer.h"
 #include "PakAnalyzer.h"
 #include "UpiFlatBufferBuilders.h"
@@ -49,4 +50,37 @@ int32_t UPI_AnalyzeIoStoreV1(const char* UtocPathUtf8, const char* UcasPathUtf8,
 	FUpiIoStoreAnalysis Analysis;
 	const bool bSuccess = UPI_AnalyzeIoStoreFile(UtocPath, UcasPath, AesKey, Analysis);
 	return UPI_CopyResponseBytes(UPI_BuildIoStoreResponseFromAnalysis(Analysis, bSuccess), OutBytes, OutCapacity, RequiredSize);
+}
+
+int32_t UPI_ExtractPakV1(const char* PakPathUtf8, const char* OutputDirectoryUtf8, const char* AesKeyUtf8OrNull, uint8_t* OutBytes, int32_t OutCapacity, int32_t* RequiredSize)
+{
+	if (RequiredSize == nullptr)
+	{
+		return UPI_CALL_BAD_ARGUMENT;
+	}
+
+	const FString PakPath = PakPathUtf8 != nullptr ? FString(UTF8_TO_TCHAR(PakPathUtf8)) : FString();
+	const FString OutputDirectory = OutputDirectoryUtf8 != nullptr ? FString(UTF8_TO_TCHAR(OutputDirectoryUtf8)) : FString();
+	const FString AesKey = AesKeyUtf8OrNull != nullptr ? FString(UTF8_TO_TCHAR(AesKeyUtf8OrNull)) : FString();
+
+	FUpiExtractResult Result;
+	const bool bSuccess = UPI_ExtractPakFile(PakPath, OutputDirectory, AesKey, Result);
+	return UPI_CopyResponseBytes(UPI_BuildExtractResponseFromResult(Result, bSuccess), OutBytes, OutCapacity, RequiredSize);
+}
+
+int32_t UPI_ExtractIoStoreV1(const char* UtocPathUtf8, const char* UcasPathUtf8, const char* OutputDirectoryUtf8, const char* AesKeyUtf8OrNull, uint8_t* OutBytes, int32_t OutCapacity, int32_t* RequiredSize)
+{
+	if (RequiredSize == nullptr)
+	{
+		return UPI_CALL_BAD_ARGUMENT;
+	}
+
+	const FString UtocPath = UtocPathUtf8 != nullptr ? FString(UTF8_TO_TCHAR(UtocPathUtf8)) : FString();
+	const FString UcasPath = UcasPathUtf8 != nullptr ? FString(UTF8_TO_TCHAR(UcasPathUtf8)) : FString();
+	const FString OutputDirectory = OutputDirectoryUtf8 != nullptr ? FString(UTF8_TO_TCHAR(OutputDirectoryUtf8)) : FString();
+	const FString AesKey = AesKeyUtf8OrNull != nullptr ? FString(UTF8_TO_TCHAR(AesKeyUtf8OrNull)) : FString();
+
+	FUpiExtractResult Result;
+	const bool bSuccess = UPI_ExtractIoStoreFile(UtocPath, UcasPath, OutputDirectory, AesKey, Result);
+	return UPI_CopyResponseBytes(UPI_BuildExtractResponseFromResult(Result, bSuccess), OutBytes, OutCapacity, RequiredSize);
 }

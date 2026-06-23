@@ -12,6 +12,15 @@ const buildRulesPath = path.join(
   'UnrealPackageInsightBackend',
   'UnrealPackageInsightBackend.Build.cs',
 );
+const publicHeaderPath = path.join(
+  repoRoot,
+  'ue-backend',
+  'UnrealPackageInsightBackend',
+  'Source',
+  'UnrealPackageInsightBackend',
+  'Public',
+  'UnrealPackageInsightBackend.h',
+);
 
 test('Unreal Build.cs uses Program-local generated protocol includes only', () => {
   const source = fs.readFileSync(buildRulesPath, 'utf8');
@@ -30,4 +39,17 @@ test('Unreal Build.cs uses Program-local generated protocol includes only', () =
   }
 
   assert.match(source, /Path\.Combine\(ModuleDirectory,\s*"Generated",\s*"Protocol"\)/);
+});
+
+test('native public ABI declares container extraction exports', () => {
+  const source = fs.readFileSync(publicHeaderPath, 'utf8');
+
+  assert.match(
+    source,
+    /UPI_BACKEND_API\s+int32_t\s+UPI_ExtractPakV1\(const char\*\s+PakPathUtf8,\s+const char\*\s+OutputDirectoryUtf8,\s+const char\*\s+AesKeyUtf8OrNull,\s+uint8_t\*\s+OutBytes,\s+int32_t\s+OutCapacity,\s+int32_t\*\s+RequiredSize\);/,
+  );
+  assert.match(
+    source,
+    /UPI_BACKEND_API\s+int32_t\s+UPI_ExtractIoStoreV1\(const char\*\s+UtocPathUtf8,\s+const char\*\s+UcasPathUtf8,\s+const char\*\s+OutputDirectoryUtf8,\s+const char\*\s+AesKeyUtf8OrNull,\s+uint8_t\*\s+OutBytes,\s+int32_t\s+OutCapacity,\s+int32_t\*\s+RequiredSize\);/,
+  );
 });

@@ -55,6 +55,16 @@ function createFakeKoffi() {
           throw new Error('Unexpected IoStore analysis call');
         };
       }
+      if (signature === 'int UPI_ExtractPakV1(str, str, str, void*, int, void*)') {
+        return () => {
+          throw new Error('Unexpected Pak extraction call');
+        };
+      }
+      if (signature === 'int UPI_ExtractIoStoreV1(str, str, str, str, void*, int, void*)') {
+        return () => {
+          throw new Error('Unexpected IoStore extraction call');
+        };
+      }
       throw new Error(`Unexpected signature: ${signature}`);
     },
   };
@@ -126,6 +136,8 @@ test('runBackendSmoke loads the DLL and prints V1 backend info', () => {
     'int UPI_GetBackendInfoV1(void*, int, void*)',
     'int UPI_AnalyzePakV1(str, str, void*, int, void*)',
     'int UPI_AnalyzeIoStoreV1(str, str, str, void*, int, void*)',
+    'int UPI_ExtractPakV1(str, str, str, void*, int, void*)',
+    'int UPI_ExtractIoStoreV1(str, str, str, str, void*, int, void*)',
   ]);
   assert.deepEqual(output, [
     'Backend: UnrealPackageInsightBackend 0.2.0',

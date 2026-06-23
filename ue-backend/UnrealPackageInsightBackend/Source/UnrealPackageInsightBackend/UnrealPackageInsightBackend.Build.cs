@@ -24,6 +24,15 @@ public class UnrealPackageInsightBackend : ModuleRules
 				"PakFile"
 			}
 		);
+
+		PrivateDependencyModuleNames.AddRange(
+			new string[]
+			{
+				"IoStoreUtilities",
+				"Json",
+				"PakFileUtilities"
+			}
+		);
 	}
 
 	private static string ResolveGeneratedCppIncludePath(string ModuleDirectory)
