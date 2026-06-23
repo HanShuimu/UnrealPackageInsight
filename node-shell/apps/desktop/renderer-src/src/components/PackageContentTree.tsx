@@ -1,7 +1,13 @@
 import { Empty, Tree } from 'antd';
-import type { Key } from 'react';
-import { useCallback, useMemo } from 'react';
+import type { Key, UIEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { buildPackageTree, type PackageRow, type PackageTreeItem } from '../utils/analysisViewModel';
+import { VisibleTreeParentTrail } from './VisibleTreeParentTrail';
+import {
+  VISIBLE_TREE_PARENT_TRAIL_HEIGHT,
+  flattenVisibleTreeRows,
+  visibleTreeParentTrail,
+} from './visibleTreeParents';
 
 type PackageContentTreeProps = {
   rows: PackageRow[];
@@ -57,8 +63,23 @@ function collectTreeState(treeData: PackageTreeItem[], rows: PackageRow[]): Pack
 
 export function PackageContentTree({ rows, height, selectedPackageId, onSelectPackage }: PackageContentTreeProps) {
   const treeState = useMemo(() => collectTreeState(buildPackageTree(rows), rows), [rows]);
+  const [expandedState, setExpandedState] = useState<{ instanceKey: string; keys: Key[] } | null>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const expandedKeys = expandedState?.instanceKey === treeState.treeInstanceKey
+    ? expandedState.keys
+    : treeState.expandedKeys;
+  const visibleRows = useMemo(() => (
+    flattenVisibleTreeRows(treeState.treeData, expandedKeys)
+  ), [expandedKeys, treeState.treeData]);
+  const parentTrail = visibleTreeParentTrail(visibleRows, scrollTop);
+  const treeHeight = Math.max(0, height - VISIBLE_TREE_PARENT_TRAIL_HEIGHT);
   const selectedTreeKey = selectedPackageId ? treeState.rowIdToKey.get(selectedPackageId) : undefined;
   const selectedKeys = selectedTreeKey ? [selectedTreeKey] : [];
+
+  useEffect(() => {
+    setScrollTop(0);
+    setExpandedState(null);
+  }, [treeState.treeInstanceKey]);
 
   const handleSelect = useCallback((keys: Key[]) => {
     const key = String(keys[0] || '');
@@ -69,22 +90,34 @@ export function PackageContentTree({ rows, height, selectedPackageId, onSelectPa
       onSelectPackage(row);
     }
   }, [onSelectPackage, treeState]);
+  const handleExpand = useCallback((keys: Key[]) => {
+    setExpandedState({ instanceKey: treeState.treeInstanceKey, keys });
+  }, [treeState.treeInstanceKey]);
+  const handleScroll = useCallback((event: UIEvent<HTMLElement>) => {
+    setScrollTop(event.currentTarget.scrollTop);
+  }, []);
 
   if (rows.length === 0) {
     return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No packages to show." />;
   }
 
   return (
-    <Tree
-      key={treeState.treeInstanceKey}
-      blockNode
-      defaultExpandAll
-      defaultExpandedKeys={treeState.expandedKeys}
-      height={height}
-      selectedKeys={selectedKeys}
-      treeData={treeState.treeData}
-      virtual
-      onSelect={handleSelect}
-    />
+    <div className="visible-tree-with-parent-trail" style={{ height }}>
+      <VisibleTreeParentTrail trail={parentTrail} />
+      <Tree
+        key={treeState.treeInstanceKey}
+        blockNode
+        defaultExpandAll
+        defaultExpandedKeys={treeState.expandedKeys}
+        expandedKeys={expandedKeys}
+        height={treeHeight}
+        selectedKeys={selectedKeys}
+        treeData={treeState.treeData}
+        virtual
+        onExpand={handleExpand}
+        onScroll={handleScroll}
+        onSelect={handleSelect}
+      />
+    </div>
   );
 }

@@ -224,6 +224,47 @@ body {
   margin-top: 48px;
 }
 
+.visible-tree-with-parent-trail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.visible-tree-parent-trail {
+  display: flex;
+  flex: 0 0 30px;
+  align-items: center;
+  min-width: 0;
+  margin-bottom: 8px;
+  padding: 0 8px;
+  overflow: hidden;
+  color: var(--upi-text-soft);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  background: var(--upi-field);
+  border: 1px solid var(--upi-line-soft);
+  border-radius: 6px;
+}
+
+.visible-tree-parent-fragment {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.visible-tree-parent-separator {
+  flex: 0 0 auto;
+  margin: 0 6px;
+  color: var(--upi-muted-light);
+}
+
+.visible-tree-parent-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .tree-content .ant-tree {
   color: var(--upi-text-soft);
   background: transparent;

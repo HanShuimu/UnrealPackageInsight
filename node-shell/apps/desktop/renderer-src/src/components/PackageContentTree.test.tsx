@@ -8,7 +8,10 @@ type MockTreeProps = {
   blockNode?: boolean;
   defaultExpandAll?: boolean;
   defaultExpandedKeys?: React.Key[];
+  expandedKeys?: React.Key[];
   height?: number;
+  onExpand?: (keys: React.Key[]) => void;
+  onScroll?: React.UIEventHandler<HTMLDivElement>;
   selectedKeys?: React.Key[];
   treeData?: PackageTreeItem[];
   virtual?: boolean;
@@ -44,6 +47,7 @@ vi.mock('antd', async () => {
           data-default-expand-all={String(props.defaultExpandAll)}
           data-height={props.height}
           data-virtual={String(props.virtual)}
+          onScroll={props.onScroll}
         >
           {props.treeData?.map(renderNode)}
         </div>
@@ -107,7 +111,7 @@ describe('PackageContentTree', () => {
     const tree = screen.getByTestId('mock-tree');
     expect(tree).toHaveAttribute('data-block-node', 'true');
     expect(tree).toHaveAttribute('data-default-expand-all', 'true');
-    expect(tree).toHaveAttribute('data-height', '480');
+    expect(tree).toHaveAttribute('data-height', '442');
     expect(tree).toHaveAttribute('data-virtual', 'true');
   });
 
@@ -140,6 +144,17 @@ describe('PackageContentTree', () => {
     render(<PackageContentTree rows={[row]} height={360} selectedPackageId="base" onSelectPackage={() => {}} />);
 
     expect(latestTreeProps().selectedKeys).toEqual(['../../../Engine/Config/Base.ini']);
+  });
+
+  test('keeps the current visible package parent chain pinned while the tree scrolls', () => {
+    render(<PackageContentTree rows={[row]} height={360} selectedPackageId="" onSelectPackage={() => {}} />);
+
+    expect(screen.getByLabelText('Current visible parents')).toHaveTextContent('Engine');
+
+    fireEvent.scroll(screen.getByTestId('mock-tree'), { target: { scrollTop: 60 } });
+
+    expect(screen.getByLabelText('Current visible parents')).toHaveTextContent('Engine');
+    expect(screen.getByLabelText('Current visible parents')).toHaveTextContent('Config');
   });
 
   test('selects and highlights duplicate package path leaves by their distinct tree keys', () => {
