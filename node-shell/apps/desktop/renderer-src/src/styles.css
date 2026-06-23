@@ -129,7 +129,7 @@ body {
 
 .workspace-panels {
   display: grid;
-  grid-template-columns: minmax(236px, 304px) minmax(0, 1fr) minmax(236px, 304px);
+  grid-template-columns: var(--opened-pane-width, 304px) minmax(0, 1fr) minmax(236px, 304px);
   gap: 24px;
   box-sizing: border-box;
   height: 100%;
@@ -150,6 +150,39 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.opened-containers-pane {
+  position: relative;
+}
+
+.opened-containers-resizer {
+  position: absolute;
+  top: 0;
+  right: -13px;
+  z-index: 2;
+  width: 24px;
+  height: 100%;
+  cursor: col-resize;
+  outline: none;
+  touch-action: none;
+}
+
+.opened-containers-resizer::after {
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 11px;
+  width: 2px;
+  content: "";
+  background: transparent;
+  border-radius: 999px;
+  transition: background 120ms ease;
+}
+
+.opened-containers-resizer:hover::after,
+.opened-containers-resizer:focus-visible::after {
+  background: var(--upi-accent-border);
 }
 
 .pane-title-block {
@@ -191,6 +224,60 @@ body {
   margin-top: 48px;
 }
 
+.visible-tree-with-parent-trail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.visible-tree-parent-trail {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin: 0;
+  margin-bottom: 8px;
+  padding: 0;
+  overflow: hidden;
+  color: var(--upi-text-soft);
+  font-size: 12px;
+  font-weight: 700;
+  list-style: none;
+  background: var(--upi-field);
+  border: 1px solid var(--upi-line-soft);
+  border-radius: 6px;
+}
+
+.visible-tree-parent-fragment {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 30px;
+  min-width: 0;
+  padding-right: 8px;
+  padding-left: calc(8px + (var(--visible-tree-parent-level, 0) * 18px));
+  white-space: nowrap;
+}
+
+.visible-tree-parent-fragment + .visible-tree-parent-fragment {
+  border-top: 1px solid var(--upi-line-soft);
+}
+
+.visible-tree-parent-fragment::before {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  content: "";
+  border-bottom: 1px solid var(--upi-muted-light);
+  border-left: 1px solid var(--upi-muted-light);
+}
+
+.visible-tree-parent-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .tree-content .ant-tree {
   color: var(--upi-text-soft);
   background: transparent;
@@ -216,6 +303,16 @@ body {
   font-weight: 700;
   background: var(--upi-accent-soft);
   outline: 1px solid var(--upi-accent-border);
+}
+
+.opened-container-tree-title {
+  display: inline-block;
+  max-width: 100%;
+  overflow: visible;
+  line-height: 20px;
+  white-space: nowrap;
+  text-overflow: clip;
+  vertical-align: top;
 }
 
 .analysis-content {
@@ -306,6 +403,24 @@ body {
   overflow: hidden;
 }
 
+.package-pane {
+  display: flex;
+  flex-direction: column;
+}
+
+.package-mode-row {
+  display: flex;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  padding-bottom: 12px;
+}
+
+.package-mode-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .analysis-table-pane .ant-empty,
 .analysis-tabs-region .ant-empty {
   margin-top: 48px;
@@ -342,6 +457,26 @@ body {
   background: #eef7f5;
 }
 
+.analysis-table-pane .package-path-column,
+.analysis-table-pane .package-path-cell {
+  white-space: nowrap;
+}
+
+.analysis-table-pane .package-path-cell {
+  display: inline-block;
+  min-width: max-content;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.analysis-table-pane .ant-table-cell-fix-left.package-path-column {
+  background: #ffffff;
+}
+
+.analysis-table-pane .ant-table-thead .ant-table-cell-fix-left.package-path-column {
+  background: #eef3f8;
+}
+
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(156px, 1fr));
@@ -374,92 +509,43 @@ body {
   line-height: 24px;
 }
 
-.empty-tab-region {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: calc(100% - 48px);
-  margin: 24px;
-  color: var(--upi-muted);
-  text-align: center;
-  background: var(--upi-field);
-  border: 1px solid var(--upi-line-soft);
-  border-radius: 6px;
-}
-
-.empty-tab-title.ant-typography {
-  margin: 0 0 12px;
-  color: var(--upi-muted);
-  font-size: 18px;
-  line-height: 22px;
-  letter-spacing: 0;
-}
-
-.empty-tab-subtitle.ant-typography {
-  color: var(--upi-muted-light);
-  font-size: 13px;
-}
-
 .details-region {
   position: relative;
 }
 
-.detail-stack {
+.details-list {
   display: flex;
   flex-direction: column;
-  gap: 28px;
-  padding: 4px 16px 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0 16px 16px;
+  padding-top: 4px;
+  overflow: auto;
+  border-top: 1px solid #d8e0e9;
 }
 
-.detail-card {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  min-height: 88px;
-  padding: 0 14px;
-  background: var(--upi-panel-soft);
-  border: 1px solid var(--upi-line-soft);
-  border-radius: 6px;
+.detail-row {
+  display: grid;
+  grid-template-columns: minmax(82px, 0.42fr) minmax(0, 1fr);
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--upi-line-soft);
 }
 
-.detail-card:first-child {
-  min-height: 138px;
-}
-
-.detail-card.has-content {
-  align-items: flex-start;
-}
-
-.detail-label.ant-typography {
-  margin-bottom: 10px;
+.detail-row-label.ant-typography {
   color: var(--upi-muted);
   font-size: 12px;
   font-weight: 700;
+  line-height: 18px;
 }
 
-.detail-value.ant-typography {
-  max-width: 100%;
+.detail-row-value.ant-typography {
+  min-width: 0;
   color: var(--upi-text);
   font-size: 13px;
   font-weight: 700;
-}
-
-.details-footer {
-  margin-top: auto;
-  padding: 0 16px 212px;
-}
-
-.container-kind-pill.ant-typography {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 94px;
-  height: 30px;
-  color: #ffffff;
-  font-size: 12px;
-  background: var(--upi-accent);
-  border-radius: 6px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
 }
 
 .backend-selector-modal .ant-modal-content {
@@ -606,7 +692,7 @@ body {
   }
 
   .workspace-panels {
-    grid-template-columns: minmax(204px, 260px) minmax(0, 1fr) minmax(190px, 236px);
+    grid-template-columns: minmax(204px, min(var(--opened-pane-width, 260px), 260px)) minmax(0, 1fr) minmax(190px, 236px);
     gap: 16px;
     padding: 16px;
   }

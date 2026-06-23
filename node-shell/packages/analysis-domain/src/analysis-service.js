@@ -54,6 +54,35 @@ function hasAesRequiredIssue(response) {
   return Boolean(response?.issues?.some((issue) => String(issue.code || '').endsWith('.aes_key_required')));
 }
 
+function attachBackendId(result, backendId) {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    return result;
+  }
+
+  return {
+    ...result,
+    backendId,
+  };
+}
+
+function resolveBackendSelectionTarget(filePath, filePaths) {
+  const kind = getContainerKind(filePath);
+  if (kind === 'pak') {
+    return { ok: true, probePath: filePath };
+  }
+
+  if (kind === 'utoc' || kind === 'ucas') {
+    const selection = resolveIoStoreSelection(filePath, filePaths);
+    if (!selection?.ok) {
+      return { ok: false };
+    }
+
+    return { ok: true, probePath: selection.utocPath };
+  }
+
+  return { ok: false };
+}
+
 class AnalysisService {
   constructor({
     backendClient,
@@ -74,6 +103,22 @@ class AnalysisService {
       return this.backendClientProvider.resolveForFile(filePath, this.filePaths);
     }
     return { backendId: 'legacy', client: this.backendClient };
+  }
+
+  getBackendSelection(filePath) {
+    if (!this.backendClientProvider || typeof this.backendClientProvider.getCandidateSelection !== 'function') {
+      return null;
+    }
+
+    const target = resolveBackendSelectionTarget(filePath, this.filePaths);
+    if (!target.ok) {
+      return null;
+    }
+
+    return {
+      ...this.backendClientProvider.getCandidateSelection(target.probePath, this.filePaths),
+      analysisFilePath: filePath,
+    };
   }
 
   async analyze(filePath) {
@@ -109,7 +154,7 @@ class AnalysisService {
       return cached;
     }
 
-    const result = await client.analyzePak({ pakPath, aesKey });
+    const result = attachBackendId(await client.analyzePak({ pakPath, aesKey }), backendId);
     this.cache.set(cacheKey, result);
     return result;
   }
@@ -146,7 +191,7 @@ class AnalysisService {
       return cached;
     }
 
-    const result = await client.analyzeIoStore({ utocPath, ucasPath, aesKey });
+    const result = attachBackendId(await client.analyzeIoStore({ utocPath, ucasPath, aesKey }), backendId);
     this.cache.set(cacheKey, result);
     return result;
   }

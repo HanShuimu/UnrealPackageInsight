@@ -170,6 +170,39 @@ test('backend:choose clears pending selection on cancel', () => {
   assert.equal(state.backendSelections.size, 0);
 });
 
+test('backend:requestSelection stores candidates for the current selected file', () => {
+  const filePath = 'C:\\Paks\\pakchunk0-Windows.pak';
+  const candidates = [
+    { id: 'ue-5.7.4-win32-x64-development', label: 'UE 5.7.4 Development' },
+    { id: 'ue-5.7.4-win32-x64-shipping', label: 'UE 5.7.4 Shipping' },
+  ];
+  const state = createDesktopState();
+  state.analysisService = {
+    getBackendSelection() {
+      return {
+        filePath,
+        analysisFilePath: filePath,
+        probe: { containerType: 'pak' },
+        candidates,
+      };
+    },
+  };
+  const handlers = createIpcHandlers({ state });
+
+  const result = handlers.requestBackendSelection(filePath);
+
+  assert.deepEqual(result, {
+    filePath,
+    analysisFilePath: filePath,
+    probe: { containerType: 'pak' },
+    candidates,
+  });
+  assert.deepEqual(state.pendingBackendSelections.get(filePath), {
+    candidates,
+    candidateIds: new Set(candidates.map((candidate) => candidate.id)),
+  });
+});
+
 test('backend:getInfo returns an empty registry summary before routing initialization', () => {
   const state = createDesktopState();
   const handlers = createIpcHandlers({ state });

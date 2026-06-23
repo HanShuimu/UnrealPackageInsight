@@ -1,13 +1,69 @@
 import { Button, Layout, Spin, Typography } from 'antd';
-import { useCallback, useEffect, useState, type RefCallback } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type RefCallback,
+} from 'react';
 import { AesKeyDialog } from './components/AesKeyDialog';
 import { AnalysisTabs } from './components/AnalysisTabs';
 import { BackendChooserDialog } from './components/BackendChooserDialog';
+import { DetailsPane } from './components/DetailsPane';
 import { PackageTree } from './components/PackageTree';
 import { useAppStore } from './stores/useAppStore';
-import type { BackendInfo } from './types/upi';
+import type { AnalysisResult, BackendInfo } from './types/upi';
+import type { DetailSelection } from './utils/analysisViewModel';
+import {
+  OPENED_CONTAINERS_MAX_WIDTH,
+  OPENED_CONTAINERS_MIN_WIDTH,
+  clampOpenedContainersWidth,
+  estimateOpenedContainersWidth,
+} from './utils/openedContainersPane';
 
 const { Header } = Layout;
+const SHELL_HORIZONTAL_PADDING = 24;
+const OPENED_PANE_KEYBOARD_STEP = 16;
+const OPENED_PANE_COMPACT_BREAKPOINT = 1040;
+const OPENED_PANE_COMPACT_MAX_WIDTH = 260;
+
+type OpenedPaneStyle = CSSProperties & {
+  '--opened-pane-width': string;
+};
+
+function getViewportWidth(): number {
+  if (typeof window === 'undefined') {
+    return 1440;
+  }
+
+  return window.innerWidth || 1440;
+}
+
+function openedPaneStyle(width: number): OpenedPaneStyle {
+  return { '--opened-pane-width': `${width}px` };
+}
+
+function openedPaneMaxWidthForViewport(viewportWidth: number): number {
+  if (viewportWidth <= OPENED_PANE_COMPACT_BREAKPOINT) {
+    return OPENED_PANE_COMPACT_MAX_WIDTH;
+  }
+
+  return clampOpenedContainersWidth(OPENED_CONTAINERS_MAX_WIDTH, viewportWidth);
+}
+
+function clampOpenedPaneWidthForViewport(width: number, viewportWidth: number): number {
+  return Math.min(
+    openedPaneMaxWidthForViewport(viewportWidth),
+    clampOpenedContainersWidth(width, viewportWidth),
+  );
+}
+
+function openedPaneMaxWidth(): number {
+  return openedPaneMaxWidthForViewport(getViewportWidth());
+}
 
 function normalizeMeasuredHeight(height: number): number {
   return Math.max(0, Math.floor(height));
@@ -57,7 +113,27 @@ function useMeasuredHeight<T extends HTMLElement>(): [RefCallback<T>, number] {
   return [ref, height];
 }
 
-function backendLabel(backendInfo: BackendInfo | null): string {
+function currentBackendId(result: AnalysisResult | null): string {
+  return typeof result?.backendId === 'string' && result.backendId.trim() !== ''
+    ? result.backendId.trim()
+    : '';
+}
+
+function backendInfoById(backendInfo: BackendInfo | null, backendId: string) {
+  return backendInfo?.backends?.find((backend) => backend.id === backendId) ?? null;
+}
+
+function backendFullLabel(backend: { id?: string; label: string }): string {
+  return backend.id ? `${backend.label} (${backend.id})` : backend.label;
+}
+
+function backendLabel(backendInfo: BackendInfo | null, result: AnalysisResult | null): string {
+  const backendId = currentBackendId(result);
+  if (backendId) {
+    const backend = backendInfoById(backendInfo, backendId);
+    return backend ? backendFullLabel(backend) : backendId;
+  }
+
   if (!backendInfo) {
     return 'Not loaded';
   }
@@ -95,7 +171,16 @@ function backendLabel(backendInfo: BackendInfo | null): string {
   return 'Ready';
 }
 
-function backendPillLabel(backendInfo: BackendInfo | null, fallback: string): string {
+function backendPillLabel(
+  backendInfo: BackendInfo | null,
+  result: AnalysisResult | null,
+  fallback: string,
+): string {
+  const backendId = currentBackendId(result);
+  if (backendId) {
+    return backendInfoById(backendInfo, backendId)?.label ?? backendId;
+  }
+
   if (!backendInfo) {
     return fallback;
   }
@@ -115,25 +200,6 @@ function backendPillLabel(backendInfo: BackendInfo | null, fallback: string): st
   return fallback;
 }
 
-function fileName(filePath: string): string {
-  const normalized = filePath.replace(/\\/g, '/');
-  return normalized.split('/').filter(Boolean).pop() || filePath;
-}
-
-function selectedKindLabel(filePath: string): string {
-  const lowerPath = filePath.toLowerCase();
-
-  if (lowerPath.endsWith('.pak')) {
-    return 'Pak';
-  }
-
-  if (lowerPath.endsWith('.utoc') || lowerPath.endsWith('.ucas')) {
-    return 'IoStore';
-  }
-
-  return 'Container';
-}
-
 export default function App() {
   const backendInfo = useAppStore((state) => state.backendInfo);
   const scan = useAppStore((state) => state.scan);
@@ -148,21 +214,134 @@ export default function App() {
   const analyzeFile = useAppStore((state) => state.analyzeFile);
   const submitAesKey = useAppStore((state) => state.submitAesKey);
   const cancelAesDialog = useAppStore((state) => state.cancelAesDialog);
+  const openBackendSelection = useAppStore((state) => state.openBackendSelection);
   const chooseBackend = useAppStore((state) => state.chooseBackend);
   const cancelBackendDialog = useAppStore((state) => state.cancelBackendDialog);
   const [treeContentRef, treeHeight] = useMeasuredHeight<HTMLDivElement>();
   const [analysisTabsRegionRef, tableHeight] = useMeasuredHeight<HTMLDivElement>();
+  const [detailSelection, setDetailSelection] = useState<DetailSelection | null>(null);
+  const [viewportWidth, setViewportWidthState] = useState(getViewportWidth);
+  const [openedPaneWidth, setOpenedPaneWidth] = useState(() => {
+    const currentViewportWidth = getViewportWidth();
+    return clampOpenedPaneWidthForViewport(
+      estimateOpenedContainersWidth(scan?.tree, currentViewportWidth),
+      currentViewportWidth,
+    );
+  });
+  const openedPaneDragCleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     void loadBackendInfo();
   }, [loadBackendInfo]);
 
-  const backendText = backendLabel(backendInfo);
-  const backendPillText = backendPillLabel(backendInfo, backendText);
+  useEffect(() => {
+    setDetailSelection(null);
+  }, [analysisResult, selectedFilePath]);
+
+  useEffect(() => {
+    const viewportWidth = getViewportWidth();
+    setOpenedPaneWidth(clampOpenedPaneWidthForViewport(
+      estimateOpenedContainersWidth(scan?.tree, viewportWidth),
+      viewportWidth,
+    ));
+  }, [scan?.tree]);
+
+  useEffect(() => {
+    function handleViewportResize(): void {
+      const nextViewportWidth = getViewportWidth();
+      setViewportWidthState(nextViewportWidth);
+      setOpenedPaneWidth((currentWidth) => (
+        clampOpenedPaneWidthForViewport(currentWidth, nextViewportWidth)
+      ));
+    }
+
+    window.addEventListener('resize', handleViewportResize);
+    return () => window.removeEventListener('resize', handleViewportResize);
+  }, []);
+
+  useEffect(() => () => {
+    openedPaneDragCleanupRef.current?.();
+  }, []);
+
+  const handleOpenedPanePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    openedPaneDragCleanupRef.current?.();
+
+    const updateWidth = (clientX: number) => {
+      setOpenedPaneWidth(clampOpenedPaneWidthForViewport(
+        clientX - SHELL_HORIZONTAL_PADDING,
+        getViewportWidth(),
+      ));
+    };
+
+    function handlePointerMove(moveEvent: PointerEvent): void {
+      updateWidth(moveEvent.clientX);
+    }
+
+    function removeDragListeners(): void {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerCancel);
+      window.removeEventListener('blur', handleWindowBlur);
+      openedPaneDragCleanupRef.current = null;
+    }
+
+    function handlePointerUp(): void {
+      removeDragListeners();
+    }
+
+    function handlePointerCancel(): void {
+      removeDragListeners();
+    }
+
+    function handleWindowBlur(): void {
+      removeDragListeners();
+    }
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerCancel);
+    window.addEventListener('blur', handleWindowBlur);
+    openedPaneDragCleanupRef.current = removeDragListeners;
+  }, []);
+
+  const handleOpenedPaneKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      setOpenedPaneWidth((currentWidth) => clampOpenedPaneWidthForViewport(
+        currentWidth - OPENED_PANE_KEYBOARD_STEP,
+        getViewportWidth(),
+      ));
+      return;
+    }
+
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      setOpenedPaneWidth((currentWidth) => clampOpenedPaneWidthForViewport(
+        currentWidth + OPENED_PANE_KEYBOARD_STEP,
+        getViewportWidth(),
+      ));
+      return;
+    }
+
+    if (event.key === 'Home') {
+      event.preventDefault();
+      setOpenedPaneWidth(OPENED_CONTAINERS_MIN_WIDTH);
+      return;
+    }
+
+    if (event.key === 'End') {
+      event.preventDefault();
+      setOpenedPaneWidth(openedPaneMaxWidth());
+    }
+  }, []);
+
+  const backendText = backendLabel(backendInfo, analysisResult);
+  const backendPillText = backendPillLabel(backendInfo, analysisResult, backendText);
   const packageRootLabel = scan?.root || 'No package directory opened';
-  const selectedLabel = selectedFilePath ? fileName(selectedFilePath) : '';
-  const selectedKind = selectedFilePath ? selectedKindLabel(selectedFilePath) : '';
+  const selectedPackageId = detailSelection?.kind === 'package' ? detailSelection.row.id : '';
   const shellBusy = isOpeningDirectory || isAnalyzing;
+  const openedPaneMaxWidthValue = openedPaneMaxWidthForViewport(viewportWidth);
 
   return (
     <Layout className="app-shell">
@@ -184,6 +363,7 @@ export default function App() {
           </Button>
           <Button
             className="toolbar-button backend-toolbar-button"
+            onClick={() => void openBackendSelection()}
             title={dialog.backendSelection ? 'Backend selection is open' : backendText}
             type={dialog.backendSelection ? 'primary' : 'default'}
           >
@@ -209,7 +389,7 @@ export default function App() {
       </Header>
 
       <div className="shell-body">
-        <div className="workspace-panels">
+        <div className="workspace-panels" style={openedPaneStyle(openedPaneWidth)}>
           <section className="workspace-pane opened-containers-pane" aria-label="Package files">
             <div className="pane-title-block">
               <div>
@@ -228,61 +408,34 @@ export default function App() {
                 onSelectFile={(filePath) => void analyzeFile(filePath)}
               />
             </div>
+            <div
+              aria-label="Resize opened containers"
+              aria-orientation="vertical"
+              aria-valuemax={openedPaneMaxWidthValue}
+              aria-valuemin={OPENED_CONTAINERS_MIN_WIDTH}
+              aria-valuenow={openedPaneWidth}
+              className="opened-containers-resizer"
+              role="separator"
+              tabIndex={0}
+              onKeyDown={handleOpenedPaneKeyDown}
+              onPointerDown={handleOpenedPanePointerDown}
+            />
           </section>
 
           <main className="analysis-content">
             <Spin classNames={{ root: 'analysis-spinner' }} spinning={shellBusy}>
               <div className="analysis-tabs-region" ref={analysisTabsRegionRef}>
-                <AnalysisTabs result={analysisResult} tableHeight={tableHeight} />
+                <AnalysisTabs
+                  result={analysisResult}
+                  selectedPackageId={selectedPackageId}
+                  tableHeight={tableHeight}
+                  onDetailsSelectionChange={setDetailSelection}
+                />
               </div>
             </Spin>
           </main>
 
-          <section className="workspace-pane details-region" aria-label="Details">
-            <div className="pane-title-block">
-              <div>
-                <Typography.Title className="pane-title" level={2}>
-                  Details
-                </Typography.Title>
-                <Typography.Text className="pane-subtitle">
-                  {selectedFilePath ? 'Selected resource' : 'Selection-specific region'}
-                </Typography.Text>
-              </div>
-            </div>
-            <div className="detail-stack">
-              <div className={`detail-card${selectedLabel ? ' has-content' : ''}`}>
-                {selectedLabel ? (
-                  <>
-                    <Typography.Text className="detail-label">File</Typography.Text>
-                    <Typography.Text
-                      aria-label={`Selected file: ${selectedFilePath}`}
-                      className="detail-value selected-value"
-                      ellipsis
-                      title={selectedFilePath}
-                    >
-                      {selectedLabel}
-                    </Typography.Text>
-                  </>
-                ) : null}
-              </div>
-              <div className={`detail-card${analysisResult ? ' has-content' : ''}`}>
-                {analysisResult ? (
-                  <>
-                    <Typography.Text className="detail-label">Analysis</Typography.Text>
-                    <Typography.Text className="detail-value" ellipsis title={statusText}>
-                      {statusText}
-                    </Typography.Text>
-                  </>
-                ) : null}
-              </div>
-              <div className="detail-card" />
-            </div>
-            {selectedKind ? (
-              <div className="details-footer">
-                <Typography.Text className="container-kind-pill" strong>{selectedKind}</Typography.Text>
-              </div>
-            ) : null}
-          </section>
+          <DetailsPane selection={detailSelection} />
         </div>
       </div>
 

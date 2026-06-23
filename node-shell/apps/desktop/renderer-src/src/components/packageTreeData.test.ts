@@ -32,13 +32,25 @@ describe('packageTreeData', () => {
         title: 'Paks',
         selectable: false,
         children: [
-          { key: 'C:\\Paks\\A.pak', title: 'A.pak', selectable: true, children: undefined },
+          {
+            key: 'C:\\Paks\\A.pak',
+            title: 'A.pak',
+            selectable: true,
+            fullPath: 'C:\\Paks\\A.pak',
+            children: undefined,
+          },
           {
             key: 'C:\\Paks\\Nested',
             title: 'Nested',
             selectable: false,
             children: [
-              { key: 'C:\\Paks\\Nested\\global.utoc', title: 'global.utoc', selectable: true, children: undefined },
+              {
+                key: 'C:\\Paks\\Nested\\global.utoc',
+                title: 'global.utoc',
+                selectable: true,
+                fullPath: 'C:\\Paks\\Nested\\global.utoc',
+                children: undefined,
+              },
             ],
           },
         ],
@@ -62,6 +74,7 @@ describe('packageTreeData', () => {
         key: 'Loose/A.pak',
         title: 'A.pak',
         selectable: true,
+        fullPath: 'Loose/A.pak',
         children: undefined,
       },
     ]);
@@ -103,5 +116,20 @@ describe('packageTreeData', () => {
     ]);
     expect(createSelectableFileMap(nameOnlyNode)).toEqual(new Map());
     expect(supportedFileKeys(nameOnlyNode)).toEqual([]);
+  });
+
+  test('preserves supported file full paths for tree title tooltips', () => {
+    const [root] = toAntTreeData(scanTree);
+    const pakNode = root.children?.[0];
+    const nestedNode = root.children?.[1].children?.[0];
+
+    expect(pakNode).toMatchObject({
+      title: 'A.pak',
+      fullPath: 'C:\\Paks\\A.pak',
+    });
+    expect(nestedNode).toMatchObject({
+      title: 'global.utoc',
+      fullPath: 'C:\\Paks\\Nested\\global.utoc',
+    });
   });
 });

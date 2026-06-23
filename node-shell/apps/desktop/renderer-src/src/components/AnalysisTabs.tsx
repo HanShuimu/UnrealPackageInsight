@@ -1,30 +1,52 @@
-import { Empty, Tabs, Typography } from 'antd';
+import { Empty, Segmented, Table, Tabs, Typography } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import { useCallback, useEffect, useMemo, useState, type RefCallback } from 'react';
-import type { AnalysisResult, Issue } from '../types/upi';
-import { buildAnalysisTabs, type AnalysisTabModel } from '../utils/analysisTabs';
-import { formatLabel, formatValue } from '../utils/format';
-import { AnalysisTable } from './AnalysisTable';
+import type { AnalysisResult } from '../types/upi';
+import {
+  buildAnalysisViewModel,
+  type AnalysisTabId,
+  type DetailSelection,
+  type IssueRow,
+  type PackageMode,
+  type PackageRow,
+  type OverviewCard,
+} from '../utils/analysisViewModel';
+import { PackageContentTree } from './PackageContentTree';
+import { PackageTable } from './PackageTable';
 
 type AnalysisTabsProps = {
   result: AnalysisResult | null;
+  selectedPackageId: string;
   tableHeight: number;
+  onDetailsSelectionChange(selection: DetailSelection | null): void;
 };
 
-type SummaryItem = {
-  key: string;
-  label: string;
-  children: string;
-};
-
-const SUMMARY_EXCLUDED_KEYS = new Set([
-  'issues',
-  'packages',
-  'chunks',
-  'compressedBlocks',
-  'partitions',
-  'backendSelection',
-]);
 const TABLE_VERTICAL_CHROME_PX = 48;
+
+const PACKAGE_MODE_OPTIONS: Array<{ label: string; value: PackageMode }> = [
+  { label: 'Table', value: 'table' },
+  { label: 'Tree', value: 'tree' },
+];
+
+const ISSUE_COLUMNS: ColumnsType<IssueRow> = [
+  {
+    dataIndex: 'severity',
+    key: 'severity',
+    title: 'Severity',
+    width: 120,
+  },
+  {
+    dataIndex: 'code',
+    key: 'code',
+    title: 'Code',
+    width: 140,
+  },
+  {
+    dataIndex: 'message',
+    key: 'message',
+    title: 'Message',
+  },
+];
 
 function normalizeMeasuredHeight(height: number): number {
   return Math.max(0, Math.floor(height));
@@ -78,130 +100,191 @@ function tableBodyHeight(availableHeight: number): number {
   return Math.max(0, normalizeMeasuredHeight(availableHeight) - TABLE_VERTICAL_CHROME_PX);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function buildSummaryItems(result: AnalysisResult): SummaryItem[] {
-  const items = new Map<string, unknown>();
-
-  Object.entries(result).forEach(([key, value]) => {
-    if (key !== 'overview' && !SUMMARY_EXCLUDED_KEYS.has(key)) {
-      items.set(key, value);
-    }
-  });
-
-  if (isRecord(result.overview)) {
-    Object.entries(result.overview).forEach(([key, value]) => {
-      items.set(key, value);
-    });
-  }
-
-  return Array.from(items.entries()).map(([key, value]) => ({
-    key,
-    label: formatLabel(key),
-    children: formatValue(value),
-  }));
-}
-
-function TablePane({ fallbackHeight, rows }: { fallbackHeight: number; rows: unknown[] }) {
-  const [paneRef, measuredHeight] = useMeasuredHeight<HTMLDivElement>();
-  const availableHeight = measuredHeight || fallbackHeight;
-
-  return (
-    <div className="analysis-table-pane" ref={paneRef}>
-      <AnalysisTable rows={rows} height={tableBodyHeight(availableHeight)} />
-    </div>
-  );
-}
-
-function IssuesTable({ fallbackHeight, issues }: { fallbackHeight: number; issues: Issue[] }) {
-  const rows = issues.map((issue) => ({
-    severity: issue.severity ?? '',
-    code: issue.code ?? '',
-    message: issue.message ?? '',
-  }));
-
-  return <TablePane rows={rows} fallbackHeight={fallbackHeight} />;
-}
-
-function renderOverview(result: AnalysisResult) {
-  const items = buildSummaryItems(result);
-
-  if (items.length === 0) {
+function renderOverviewCards(cards: OverviewCard[]) {
+  if (cards.length === 0) {
     return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No summary to show." />;
   }
 
   return (
     <div className="summary-grid">
-      {items.map((item) => (
-        <div className="summary-card" key={item.key}>
-          <Typography.Text className="summary-label">{item.label}</Typography.Text>
-          <Typography.Text className="summary-value">{item.children}</Typography.Text>
+      {cards.map((card) => (
+        <div className="summary-card" key={card.id}>
+          <Typography.Text className="summary-label">{card.label}</Typography.Text>
+          <Typography.Text className="summary-value">{card.value}</Typography.Text>
         </div>
       ))}
     </div>
   );
 }
 
-function renderEmptyWorkspace() {
+type PackagePaneProps = {
+  fallbackHeight: number;
+  mode: PackageMode;
+  rows: PackageRow[];
+  selectedPackageId: string;
+  onModeChange(mode: PackageMode): void;
+  onSelectPackage(row: PackageRow): void;
+};
+
+function PackagePane({
+  fallbackHeight,
+  mode,
+  rows,
+  selectedPackageId,
+  onModeChange,
+  onSelectPackage,
+}: PackagePaneProps) {
+  const [contentRef, measuredHeight] = useMeasuredHeight<HTMLDivElement>();
+  const availableHeight = measuredHeight || fallbackHeight;
+  const packageHeight = tableBodyHeight(availableHeight);
+
   return (
-    <div className="empty-tab-region">
-      <Typography.Title className="empty-tab-title" level={3}>
-        Tab content region
-      </Typography.Title>
-      <Typography.Text className="empty-tab-subtitle">
-        Replace with Pak or IoStore tab variants
-      </Typography.Text>
+    <div className="analysis-table-pane package-pane">
+      <div className="package-mode-row">
+        <Segmented<PackageMode>
+          options={PACKAGE_MODE_OPTIONS}
+          value={mode}
+          onChange={onModeChange}
+        />
+      </div>
+      <div className="package-mode-content" ref={contentRef}>
+        {mode === 'tree' ? (
+          <PackageContentTree
+            height={packageHeight}
+            rows={rows}
+            selectedPackageId={selectedPackageId}
+            onSelectPackage={onSelectPackage}
+          />
+        ) : (
+          <PackageTable
+            height={packageHeight}
+            rows={rows}
+            onSelectPackage={onSelectPackage}
+          />
+        )}
+      </div>
     </div>
   );
 }
 
-function renderTabContent(tab: AnalysisTabModel, result: AnalysisResult, height: number) {
-  switch (tab.kind) {
-    case 'overview':
-      return renderOverview(result);
-    case 'table':
-      return <TablePane rows={result[tab.field] ?? []} fallbackHeight={height} />;
-    case 'issues':
-      return <IssuesTable issues={result.issues ?? []} fallbackHeight={height} />;
-    case 'raw':
-      return (
-        <Typography.Paragraph code>
-          {formatValue(result)}
-        </Typography.Paragraph>
-      );
-    default:
-      return null;
-  }
-}
+function IssuesTable({
+  fallbackHeight,
+  rows,
+  onSelectIssue,
+}: {
+  fallbackHeight: number;
+  rows: IssueRow[];
+  onSelectIssue(row: IssueRow): void;
+}) {
+  const [paneRef, measuredHeight] = useMeasuredHeight<HTMLDivElement>();
+  const availableHeight = measuredHeight || fallbackHeight;
+  const issueTableHeight = tableBodyHeight(availableHeight);
+  const handleRow = useCallback((row: IssueRow) => ({
+    onClick: () => {
+      onSelectIssue(row);
+    },
+  }), [onSelectIssue]);
 
-export function AnalysisTabs({ result, tableHeight }: AnalysisTabsProps) {
-  const tabModels = useMemo(() => buildAnalysisTabs(result), [result]);
-
-  if (!result) {
+  if (rows.length === 0) {
     return (
-      <Tabs
-        items={[
-          { key: 'overview', label: 'Overview', children: renderEmptyWorkspace() },
-          { key: 'packages', label: 'Packages', children: renderEmptyWorkspace() },
-          { key: 'issues', label: 'Issues', children: renderEmptyWorkspace() },
-        ]}
-      />
+      <div className="analysis-table-pane" ref={paneRef}>
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No issues to show." />
+      </div>
     );
   }
 
-  if (tabModels.length === 0) {
-    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No analysis result to show." />;
-  }
+  return (
+    <div className="analysis-table-pane" ref={paneRef}>
+      <Table<IssueRow>
+        bordered
+        columns={ISSUE_COLUMNS}
+        dataSource={rows}
+        pagination={false}
+        rowKey="id"
+        scroll={{ x: 760, y: issueTableHeight }}
+        size="small"
+        tableLayout="auto"
+        virtual
+        onRow={handleRow}
+      />
+    </div>
+  );
+}
+
+export function AnalysisTabs({
+  result,
+  selectedPackageId,
+  tableHeight,
+  onDetailsSelectionChange,
+}: AnalysisTabsProps) {
+  const viewModel = useMemo(() => buildAnalysisViewModel(result), [result]);
+  const [activeTab, setActiveTab] = useState<AnalysisTabId>('overview');
+  const [packageMode, setPackageMode] = useState<PackageMode>('table');
+
+  useEffect(() => {
+    setActiveTab('overview');
+    setPackageMode('table');
+    onDetailsSelectionChange(null);
+  }, [result, onDetailsSelectionChange]);
+
+  const handleTabChange = useCallback((nextTab: string) => {
+    setActiveTab(nextTab as AnalysisTabId);
+  }, []);
+
+  const handlePackageModeChange = useCallback((nextMode: PackageMode) => {
+    setPackageMode(nextMode);
+  }, []);
+
+  const handleSelectPackage = useCallback((row: PackageRow) => {
+    onDetailsSelectionChange({ kind: 'package', row });
+  }, [onDetailsSelectionChange]);
+
+  const handleSelectIssue = useCallback((row: IssueRow) => {
+    onDetailsSelectionChange({ kind: 'issue', row });
+  }, [onDetailsSelectionChange]);
 
   return (
     <Tabs
-      items={tabModels.map((tab) => ({
-        key: tab.id,
-        label: tab.label,
-        children: renderTabContent(tab, result, tableHeight),
-      }))}
+      activeKey={activeTab}
+      onChange={handleTabChange}
+      items={viewModel.tabs.map((tab) => {
+        if (tab.id === 'overview') {
+          return {
+            key: tab.id,
+            label: tab.label,
+            children: renderOverviewCards(viewModel.overviewCards),
+          };
+        }
+
+        if (tab.id === 'packages') {
+          return {
+            key: tab.id,
+            label: tab.label,
+            children: (
+              <PackagePane
+                fallbackHeight={tableHeight}
+                mode={packageMode}
+                rows={viewModel.packageRows}
+                selectedPackageId={selectedPackageId}
+                onModeChange={handlePackageModeChange}
+                onSelectPackage={handleSelectPackage}
+              />
+            ),
+          };
+        }
+
+        return {
+          key: tab.id,
+          label: tab.label,
+          children: (
+            <IssuesTable
+              rows={viewModel.issueRows}
+              fallbackHeight={tableHeight}
+              onSelectIssue={handleSelectIssue}
+            />
+          ),
+        };
+      })}
     />
   );
 }

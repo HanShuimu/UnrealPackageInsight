@@ -16,7 +16,10 @@ vi.mock('antd', async () => {
     ...actual,
     Tree: (props: {
       defaultExpandedKeys?: React.Key[];
+      expandedKeys?: React.Key[];
       height?: number;
+      onExpand?: (keys: React.Key[]) => void;
+      onScroll?: React.UIEventHandler<HTMLDivElement>;
       virtual?: boolean;
       treeData?: MockTreeNode[];
       onSelect?: (keys: React.Key[]) => void;
@@ -34,8 +37,10 @@ vi.mock('antd', async () => {
         <div
           data-testid="mock-tree"
           data-default-expanded={props.defaultExpandedKeys?.join('|') || ''}
+          data-expanded={props.expandedKeys?.join('|') || ''}
           data-height={props.height}
           data-virtual={String(props.virtual)}
+          onScroll={props.onScroll}
         >
           {props.treeData?.map(renderNode)}
         </div>
@@ -81,7 +86,7 @@ describe('PackageTree', () => {
   test('passes a numeric height to keep Ant Design virtual scrolling active', () => {
     render(<PackageTree scan={scan} selectedFilePath="" height={512} onSelectFile={() => {}} />);
 
-    expect(screen.getByTestId('mock-tree')).toHaveAttribute('data-height', '512');
+    expect(screen.getByTestId('mock-tree')).toHaveAttribute('data-height', '474');
     expect(screen.getByTestId('mock-tree')).toHaveAttribute('data-virtual', 'true');
   });
 
@@ -90,6 +95,10 @@ describe('PackageTree', () => {
 
     expect(screen.getByTestId('mock-tree')).toHaveAttribute(
       'data-default-expanded',
+      'C:\\Paks|C:\\Paks\\Nested',
+    );
+    expect(screen.getByTestId('mock-tree')).toHaveAttribute(
+      'data-expanded',
       'C:\\Paks|C:\\Paks\\Nested',
     );
   });
@@ -112,5 +121,17 @@ describe('PackageTree', () => {
     fireEvent.click(screen.getByRole('button', { name: 'global.utoc' }));
 
     expect(onSelectFile).toHaveBeenCalledWith('Nested/global.utoc');
+  });
+
+  test('keeps the current visible parent chain pinned while the tree scrolls', () => {
+    render(<PackageTree scan={nestedScan} selectedFilePath="" height={512} onSelectFile={() => {}} />);
+
+    expect(screen.getByLabelText('Current visible parents')).toHaveTextContent('Paks');
+
+    fireEvent.scroll(screen.getByTestId('mock-tree'), { target: { scrollTop: 90 } });
+
+    expect(screen.getByTestId('mock-tree')).toHaveAttribute('data-height', '444');
+    expect(screen.getByLabelText('Current visible parents')).toHaveTextContent('Paks');
+    expect(screen.getByLabelText('Current visible parents')).toHaveTextContent('Nested');
   });
 });

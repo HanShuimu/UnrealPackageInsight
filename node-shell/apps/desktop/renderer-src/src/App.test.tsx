@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import App from './App';
 import type { AppState } from './stores/appStore';
+import type { DetailSelection } from './utils/analysisViewModel';
 
 type ObserverRecord = {
   callback: ResizeObserverCallback;
@@ -17,6 +18,7 @@ const mockHarness = vi.hoisted(() => ({
     chooseBackend: vi.fn(() => Promise.resolve()),
     loadBackendInfo: vi.fn(() => Promise.resolve()),
     openDirectory: vi.fn(() => Promise.resolve()),
+    openBackendSelection: vi.fn(() => Promise.resolve()),
     submitAesKey: vi.fn(() => Promise.resolve()),
   },
   observers: [] as ObserverRecord[],
@@ -49,8 +51,36 @@ vi.mock('./stores/useAppStore', () => ({
 }));
 
 vi.mock('./components/AnalysisTabs', () => ({
-  AnalysisTabs: ({ tableHeight }: { tableHeight: number }) => (
-    <div data-testid="analysis-tabs" data-height={tableHeight} />
+  AnalysisTabs: ({
+    onDetailsSelectionChange,
+    selectedPackageId,
+    tableHeight,
+  }: {
+    onDetailsSelectionChange(selection: DetailSelection | null): void;
+    selectedPackageId: string;
+    tableHeight: number;
+  }) => (
+    <div
+      data-selected-package-id={selectedPackageId}
+      data-testid="analysis-tabs"
+      data-height={tableHeight}
+    >
+      <button
+        type="button"
+        onClick={() => onDetailsSelectionChange({
+          kind: 'package',
+          row: {
+            id: '../../../Engine/Config/Base.ini',
+            fullPath: '../../../Engine/Config/Base.ini',
+            fileName: 'Base.ini',
+            physicalOrder: 0,
+            source: {},
+          },
+        })}
+      >
+        Select package detail
+      </button>
+    </div>
   ),
 }));
 
@@ -80,6 +110,7 @@ function createMockState(overrides: Partial<AppState> = {}): AppState {
     isOpeningDirectory: false,
     loadBackendInfo: mockHarness.actions.loadBackendInfo,
     openDirectory: mockHarness.actions.openDirectory,
+    openBackendSelection: mockHarness.actions.openBackendSelection,
     openDirectoryRequestId: 0,
     scan: null,
     selectedFilePath: '',
@@ -121,11 +152,36 @@ function resizeElement(selector: string, height: number): void {
   });
 }
 
+function setViewportWidth(width: number): void {
+  Object.defineProperty(window, 'innerWidth', {
+    configurable: true,
+    value: width,
+    writable: true,
+  });
+}
+
+function openedPaneStyleWidth(container: HTMLElement): number {
+  const panels = container.querySelector('.workspace-panels') as HTMLElement | null;
+
+  if (!panels) {
+    throw new Error('Missing workspace panels');
+  }
+
+  const match = /^(\d+)px$/.exec(panels.style.getPropertyValue('--opened-pane-width').trim());
+
+  if (!match) {
+    throw new Error(`Missing opened pane CSS variable: ${panels.getAttribute('style') || ''}`);
+  }
+
+  return Number(match[1]);
+}
+
 describe('App', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockHarness.observers.length = 0;
     mockHarness.state = createMockState();
+    setViewportWidth(1024);
     vi.stubGlobal('ResizeObserver', ResizeObserverMock);
   });
 
@@ -138,7 +194,8 @@ describe('App', () => {
     expect(screen.getByText(/TestBackend/)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Opened containers' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Details' })).toBeInTheDocument();
-    expect(screen.getByText('Selection-specific region')).toBeInTheDocument();
+    expect(screen.queryByText('Selection-specific region')).not.toBeInTheDocument();
+    expect(screen.queryByText('Selected resource')).not.toBeInTheDocument();
   });
 
   test('renders the UPI Final three-pane workspace shell', () => {
@@ -170,9 +227,81 @@ describe('App', () => {
     );
     expect(container.querySelector('.workspace-panels')).toBeInTheDocument();
     expect(screen.getByText('Single selected source')).toBeInTheDocument();
-    expect(screen.getByText('Selected resource')).toBeInTheDocument();
-    expect(screen.getByText('pakchunk0-Windows.pak')).toBeInTheDocument();
-    expect(screen.getByText('Pak')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Details' }).textContent).toBe('Details');
+    expect(screen.queryByText('Selected resource')).not.toBeInTheDocument();
+    expect(screen.queryByText('pakchunk0-Windows.pak')).not.toBeInTheDocument();
+    expect(screen.queryByText('Pak')).not.toBeInTheDocument();
+  });
+
+  test('keeps the details region empty until a result row is selected', () => {
+    mockHarness.state = createMockState({
+      analysisResult: {
+        overview: { packageCount: 1 },
+        packages: [{ packagePath: '../../../Engine/Config/Base.ini', order: 0 }],
+      },
+      selectedFilePath: 'C:\\Paks\\pakchunk0-Windows.pak',
+    });
+
+    render(<App />);
+
+    const details = screen.getByRole('region', { name: 'Details' });
+    expect(details.textContent).toBe('Details');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select package detail' }));
+
+    expect(details).toHaveTextContent('../../../Engine/Config/Base.ini');
+    expect(screen.getByTestId('analysis-tabs')).toHaveAttribute(
+      'data-selected-package-id',
+      '../../../Engine/Config/Base.ini',
+    );
+  });
+
+  test('clears selected details when the selected file or analysis result changes', async () => {
+    const firstResult = {
+      overview: { packageCount: 1 },
+      packages: [{ packagePath: '../../../Engine/Config/Base.ini', order: 0 }],
+    };
+    mockHarness.state = createMockState({
+      analysisResult: firstResult,
+      selectedFilePath: 'C:\\Paks\\pakchunk0-Windows.pak',
+    });
+
+    const { rerender } = render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select package detail' }));
+    expect(screen.getByRole('region', { name: 'Details' })).toHaveTextContent(
+      '../../../Engine/Config/Base.ini',
+    );
+
+    mockHarness.state = createMockState({
+      analysisResult: firstResult,
+      selectedFilePath: 'C:\\Paks\\pakchunk1-Windows.pak',
+    });
+    rerender(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Details' }).textContent).toBe('Details');
+      expect(screen.getByTestId('analysis-tabs')).toHaveAttribute('data-selected-package-id', '');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select package detail' }));
+    expect(screen.getByRole('region', { name: 'Details' })).toHaveTextContent(
+      '../../../Engine/Config/Base.ini',
+    );
+
+    mockHarness.state = createMockState({
+      analysisResult: {
+        overview: { packageCount: 1 },
+        packages: [{ packagePath: '../../../Game/Config/Default.ini', order: 1 }],
+      },
+      selectedFilePath: 'C:\\Paks\\pakchunk1-Windows.pak',
+    });
+    rerender(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Details' }).textContent).toBe('Details');
+      expect(screen.getByTestId('analysis-tabs')).toHaveAttribute('data-selected-package-id', '');
+    });
   });
 
   test('summarizes backend registry info in the shell header', () => {
@@ -192,6 +321,28 @@ describe('App', () => {
     expect(screen.getByLabelText('Backend: 2 backends available')).toHaveClass('status-value');
   });
 
+  test('shows the backend used by the current analysis result in the shell header', () => {
+    mockHarness.state = createMockState({
+      analysisResult: {
+        status: 'OK',
+        backendId: 'ue-5.7-shipping',
+      },
+      backendInfo: {
+        status: 'OK',
+        backendCount: 2,
+        backends: [
+          { id: 'ue-5.7-development', label: 'UE 5.7 Development' },
+          { id: 'ue-5.7-shipping', label: 'UE 5.7 Shipping' },
+        ],
+      },
+    });
+
+    render(<App />);
+
+    expect(screen.getByLabelText('Backend: UE 5.7 Shipping (ue-5.7-shipping)')).toBeInTheDocument();
+    expect(screen.getByText('UE 5.7 Shipping')).toBeInTheDocument();
+  });
+
   test('loads backend info on mount and opens directories from the toolbar', async () => {
     render(<App />);
 
@@ -200,6 +351,18 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open' }));
 
     expect(mockHarness.actions.openDirectory).toHaveBeenCalledTimes(1);
+  });
+
+  test('opens the backend chooser from the toolbar for the selected container', () => {
+    mockHarness.state = createMockState({
+      selectedFilePath: 'C:\\Paks\\pakchunk0-Windows.pak',
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Backend' }));
+
+    expect(mockHarness.actions.openBackendSelection).toHaveBeenCalledTimes(1);
   });
 
   test('passes measured region heights to virtualized regions', async () => {
@@ -212,6 +375,185 @@ describe('App', () => {
       expect(screen.getByTestId('package-tree')).toHaveAttribute('data-height', '321');
       expect(screen.getByTestId('analysis-tabs')).toHaveAttribute('data-height', '456');
     });
+  });
+
+  test('sizes and drags the opened containers pane without persisting width', () => {
+    setViewportWidth(1440);
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
+    const deepPackagePath = 'C:\\WORKSPACE_RA\\RATrunk\\LocalBuilds\\Game\\Windows\\Project\\Content\\Paks\\pakchunk0-WindowsNoEditor_Optional_StreamedTextures_VeryLongLabel.pak';
+
+    mockHarness.state = createMockState({
+      scan: {
+        root: 'C:\\WORKSPACE_RA\\RATrunk\\LocalBuilds\\Game\\Windows',
+        files: [{ path: deepPackagePath, kind: 'pak' }],
+        tree: {
+          name: 'Windows',
+          kind: 'directory',
+          children: [
+            {
+              name: 'Project',
+              kind: 'directory',
+              children: [
+                {
+                  name: 'Content',
+                  kind: 'directory',
+                  children: [
+                    {
+                      name: 'Paks',
+                      kind: 'directory',
+                      children: [
+                        {
+                          name: 'pakchunk0-WindowsNoEditor_Optional_StreamedTextures_VeryLongLabel.pak',
+                          path: deepPackagePath,
+                          kind: 'pak',
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+
+    try {
+      const { container } = render(<App />);
+      const panels = container.querySelector('.workspace-panels') as HTMLElement;
+
+      expect(openedPaneStyleWidth(container)).toBeGreaterThan(304);
+      expect(panels.style.gridTemplateColumns).toBe('');
+
+      const separator = screen.getByRole('separator', { name: 'Resize opened containers' });
+
+      fireEvent.pointerDown(separator, { clientX: 576, pointerId: 1 });
+      fireEvent.pointerMove(window, { clientX: 360, pointerId: 1 });
+
+      expect(openedPaneStyleWidth(container)).toBe(336);
+
+      fireEvent.pointerMove(window, { clientX: 1000, pointerId: 1 });
+
+      expect(openedPaneStyleWidth(container)).toBe(576);
+
+      fireEvent.pointerUp(window, { pointerId: 1 });
+      fireEvent.pointerMove(window, { clientX: 300, pointerId: 1 });
+
+      expect(openedPaneStyleWidth(container)).toBe(576);
+      expect(setItemSpy).not.toHaveBeenCalled();
+    } finally {
+      setItemSpy.mockRestore();
+    }
+  });
+
+  test('resizes the opened containers pane from the separator keyboard controls', () => {
+    setViewportWidth(1440);
+    const { container } = render(<App />);
+    const separator = screen.getByRole('separator', { name: 'Resize opened containers' });
+
+    expect(separator).toHaveAttribute('aria-valuemax', '576');
+    expect(openedPaneStyleWidth(container)).toBe(304);
+
+    fireEvent.keyDown(separator, { key: 'ArrowRight' });
+
+    expect(openedPaneStyleWidth(container)).toBe(320);
+    expect(separator).toHaveAttribute('aria-valuenow', '320');
+
+    fireEvent.keyDown(separator, { key: 'Home' });
+
+    expect(openedPaneStyleWidth(container)).toBe(236);
+
+    fireEvent.keyDown(separator, { key: 'End' });
+
+    expect(openedPaneStyleWidth(container)).toBe(576);
+  });
+
+  test('clamps separator keyboard max to the compact visual max', () => {
+    setViewportWidth(1024);
+    const { container } = render(<App />);
+    const separator = screen.getByRole('separator', { name: 'Resize opened containers' });
+
+    expect(separator).toHaveAttribute('aria-valuemax', '260');
+
+    fireEvent.keyDown(separator, { key: 'Home' });
+
+    expect(openedPaneStyleWidth(container)).toBe(236);
+
+    fireEvent.keyDown(separator, { key: 'End' });
+
+    expect(openedPaneStyleWidth(container)).toBe(260);
+    expect(separator).toHaveAttribute('aria-valuenow', '260');
+  });
+
+  test('clamps pointer dragging to the compact visual max', () => {
+    setViewportWidth(1024);
+    const { container } = render(<App />);
+    const separator = screen.getByRole('separator', { name: 'Resize opened containers' });
+
+    fireEvent.pointerDown(separator, { clientX: 576, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 1000, pointerId: 1 });
+
+    expect(openedPaneStyleWidth(container)).toBe(260);
+    expect(separator).toHaveAttribute('aria-valuenow', '260');
+  });
+
+  test('clamps the existing opened pane width when viewport enters compact layout', () => {
+    setViewportWidth(1440);
+    const { container } = render(<App />);
+    const separator = screen.getByRole('separator', { name: 'Resize opened containers' });
+
+    fireEvent.pointerDown(separator, { clientX: 576, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 1000, pointerId: 1 });
+    fireEvent.pointerUp(window, { pointerId: 1 });
+
+    expect(openedPaneStyleWidth(container)).toBe(576);
+    expect(separator).toHaveAttribute('aria-valuenow', '576');
+
+    setViewportWidth(1024);
+    fireEvent.resize(window);
+
+    expect(openedPaneStyleWidth(container)).toBe(260);
+    expect(separator).toHaveAttribute('aria-valuenow', '260');
+    expect(separator).toHaveAttribute('aria-valuemax', '260');
+
+    setViewportWidth(1440);
+    fireEvent.resize(window);
+
+    expect(openedPaneStyleWidth(container)).toBe(260);
+    expect(separator).toHaveAttribute('aria-valuenow', '260');
+    expect(separator).toHaveAttribute('aria-valuemax', '576');
+  });
+
+  test('stops drag resizing when the pointer drag is canceled', () => {
+    setViewportWidth(1440);
+    const { container } = render(<App />);
+    const separator = screen.getByRole('separator', { name: 'Resize opened containers' });
+
+    fireEvent.pointerDown(separator, { clientX: 576, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 360, pointerId: 1 });
+
+    expect(openedPaneStyleWidth(container)).toBe(336);
+
+    fireEvent.pointerCancel(window, { pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 1000, pointerId: 1 });
+
+    expect(openedPaneStyleWidth(container)).toBe(336);
+  });
+
+  test('stops drag resizing when the window loses focus', () => {
+    setViewportWidth(1440);
+    const { container } = render(<App />);
+    const separator = screen.getByRole('separator', { name: 'Resize opened containers' });
+
+    fireEvent.pointerDown(separator, { clientX: 576, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 360, pointerId: 1 });
+
+    expect(openedPaneStyleWidth(container)).toBe(336);
+
+    fireEvent.blur(window);
+    fireEvent.pointerMove(window, { clientX: 1000, pointerId: 1 });
+
+    expect(openedPaneStyleWidth(container)).toBe(336);
   });
 
   test('exposes constrained labels for long shell values', () => {
@@ -232,8 +574,6 @@ describe('App', () => {
     expect(screen.getByLabelText(
       /Backend: VeryLongBackendNameThatShouldNotStretchTheToolbar/,
     )).toHaveClass('status-value');
-    expect(screen.getByLabelText(
-      'Selected file: C:\\Extremely\\Long\\Path\\That\\Should\\Be\\Ellipsized\\Container.pak',
-    )).toHaveClass('selected-value');
+    expect(screen.getByRole('region', { name: 'Details' }).textContent).toBe('Details');
   });
 });

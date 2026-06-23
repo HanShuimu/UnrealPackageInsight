@@ -261,6 +261,32 @@ test('resolves backend by selected Pak file and includes backend id in cache key
   assert.deepEqual(calls, [{ pakPath, aesKey: '' }]);
 });
 
+test('adds the resolved backend id to Pak results before caching', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-analysis-service-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const pakPath = path.join(root, 'pakchunk0-Windows.pak');
+  createFile(pakPath, 'pak');
+  const service = new AnalysisService({
+    backendClientProvider: {
+      async resolveForFile() {
+        return {
+          backendId: 'ue-5.7.4-win32-x64-development',
+          client: {
+            async analyzePak() {
+              return { status: 'OK', packages: [] };
+            },
+          },
+        };
+      },
+    },
+    filePaths: [pakPath],
+  });
+
+  const result = await service.analyze(pakPath);
+
+  assert.equal(result.backendId, 'ue-5.7.4-win32-x64-development');
+});
+
 test('does not reuse cached Pak results across different backend ids', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-analysis-service-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
