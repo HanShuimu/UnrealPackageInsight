@@ -93,3 +93,23 @@ test('native extraction hardens encrypted container key handling and preflight',
   assert.match(source, /ExecuteUnrealPak\(\*CommandLine\)/);
   assert.ok(source.indexOf('UPI_CanCreateFile(TempResponseFile)') < source.indexOf('ExecuteUnrealPak(*CommandLine)'));
 });
+
+test('native Pak preflight registers runtime key before loading the index', () => {
+  const source = fs.readFileSync(containerExtractorPath, 'utf8');
+  const preflightStart = source.indexOf('bool UPI_PreflightPakForExtraction(');
+  assert.notEqual(preflightStart, -1);
+
+  const preflightEnd = source.indexOf('\n\tvoid UPI_AddKeyToKeyChain', preflightStart);
+  assert.notEqual(preflightEnd, -1);
+
+  const preflightSource = source.slice(preflightStart, preflightEnd);
+  const trailerGuidIndex = preflightSource.indexOf('OutEncryptionKeyGuid = TrailerInfo.EncryptionKeyGuid;');
+  const registrationIndex = preflightSource.indexOf('UPI_RegisterPakRuntimeKey(TrailerInfo.EncryptionKeyGuid, ParsedKey);');
+  const indexLoadIndex = preflightSource.indexOf('MakeRefCount<FPakFile>(&PlatformFile, *PakPath, false, true)');
+
+  assert.notEqual(trailerGuidIndex, -1);
+  assert.notEqual(registrationIndex, -1);
+  assert.notEqual(indexLoadIndex, -1);
+  assert.ok(trailerGuidIndex < registrationIndex);
+  assert.ok(registrationIndex < indexLoadIndex);
+});

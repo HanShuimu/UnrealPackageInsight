@@ -11,6 +11,8 @@
 #include "Misc/Base64.h"
 #include "Misc/CommandLine.h"
 #include "Misc/ConfigCacheIni.h"
+#include "Misc/CoreDelegates.h"
+#include "Misc/EncryptionKeyManager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Guid.h"
 #include "Misc/KeyChainUtilities.h"
@@ -272,6 +274,20 @@ namespace
 		return ComputedHash == PakInfo.IndexHash;
 	}
 
+	void UPI_RegisterPakRuntimeKey(const FGuid& EncryptionKeyGuid, const FAES::FAESKey& Key)
+	{
+		if (EncryptionKeyGuid.IsValid())
+		{
+			UE::FEncryptionKeyManager::Get().AddKey(EncryptionKeyGuid, Key);
+			return;
+		}
+
+		FCoreDelegates::GetPakEncryptionKeyDelegate().BindLambda([Key](uint8 OutKey[FAES::FAESKey::KeySize])
+		{
+			FMemory::Memcpy(OutKey, Key.Key, FAES::FAESKey::KeySize);
+		});
+	}
+
 	bool UPI_PreflightPakForExtraction(const FString& PakPath, const FAES::FAESKey& ParsedKey, bool bHasKey, FGuid& OutEncryptionKeyGuid)
 	{
 		UPI_EnsureMinimalUnrealRuntimeForPak();
@@ -285,6 +301,11 @@ namespace
 
 		const FPakInfo& TrailerInfo = TrailerOnlyPak->GetInfo();
 		OutEncryptionKeyGuid = TrailerInfo.EncryptionKeyGuid;
+		if (bHasKey)
+		{
+			UPI_RegisterPakRuntimeKey(TrailerInfo.EncryptionKeyGuid, ParsedKey);
+		}
+
 		if (TrailerInfo.bEncryptedIndex != 0)
 		{
 			return bHasKey && UPI_CanDecryptPakIndexWithKey(PakPath, TrailerInfo, ParsedKey);
