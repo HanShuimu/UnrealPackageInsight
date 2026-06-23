@@ -6,6 +6,7 @@
 #include "HAL/UnrealMemory.h"
 #include "Math/NumericLimits.h"
 #include "upi_backend_info_generated.h"
+#include "upi_extract_response_generated.h"
 #include "upi_iostore_analysis_generated.h"
 #include "upi_pak_analysis_generated.h"
 
@@ -44,7 +45,14 @@ namespace
 			IssueCode == TEXT("iostore.file_not_found") ||
 			IssueCode == TEXT("iostore.invalid") ||
 			IssueCode == TEXT("iostore.aes_key_required") ||
-			IssueCode == TEXT("iostore.aes_key_invalid"))
+			IssueCode == TEXT("iostore.aes_key_invalid") ||
+			IssueCode == TEXT("extract.path_required") ||
+			IssueCode == TEXT("extract.output_directory_required") ||
+			IssueCode == TEXT("extract.file_not_found") ||
+			IssueCode == TEXT("extract.invalid_output_directory") ||
+			IssueCode == TEXT("extract.aes_key_invalid") ||
+			IssueCode == TEXT("pak.extract_failed") ||
+			IssueCode == TEXT("iostore.extract_failed"))
 		{
 			return upi::v1::IssueSeverity_Error;
 		}
@@ -105,6 +113,34 @@ namespace
 		if (IssueCode == TEXT("iostore.partial_listing"))
 		{
 			return TEXT("IoStore directory index did not expose filenames for every chunk.");
+		}
+		if (IssueCode == TEXT("extract.path_required"))
+		{
+			return TEXT("Container path is required.");
+		}
+		if (IssueCode == TEXT("extract.output_directory_required"))
+		{
+			return TEXT("Output directory is required.");
+		}
+		if (IssueCode == TEXT("extract.file_not_found"))
+		{
+			return TEXT("Container file was not found.");
+		}
+		if (IssueCode == TEXT("extract.invalid_output_directory"))
+		{
+			return TEXT("Output directory could not be created or accessed.");
+		}
+		if (IssueCode == TEXT("extract.aes_key_invalid"))
+		{
+			return TEXT("AES key must be a 16-byte or 32-byte hex value.");
+		}
+		if (IssueCode == TEXT("pak.extract_failed"))
+		{
+			return TEXT("Pak extraction failed.");
+		}
+		if (IssueCode == TEXT("iostore.extract_failed"))
+		{
+			return TEXT("IoStore extraction failed.");
 		}
 
 		return *IssueCode;
@@ -354,6 +390,39 @@ TArray<uint8> UPI_BuildIoStoreResponseFromAnalysis(const FUpiIoStoreAnalysis& An
 		&CompressedBlocks);
 
 	upi::v1::FinishIoStoreAnalysisResponseBuffer(Builder, Response);
+	return UPI_CopyBuilderBytes(Builder);
+}
+
+TArray<uint8> UPI_BuildExtractResponseFromResult(const FUpiExtractResult& Result, bool bSuccess)
+{
+	flatbuffers::FlatBufferBuilder Builder;
+
+	std::vector<flatbuffers::Offset<upi::v1::Issue>> Issues;
+	Issues.reserve(Result.Issues.Num());
+	for (const FString& IssueCode : Result.Issues)
+	{
+		const auto Code = UPI_CreateString(Builder, IssueCode);
+		const auto Message = UPI_CreateString(Builder, UPI_IssueMessageForCode(IssueCode));
+		Issues.push_back(upi::v1::CreateIssue(
+			Builder,
+			UPI_IssueSeverityForCode(IssueCode, bSuccess),
+			Code,
+			Message));
+	}
+
+	const auto ContainerPath = UPI_CreateString(Builder, Result.ContainerPath);
+	const auto OutputDirectory = UPI_CreateString(Builder, Result.OutputDirectory);
+	const auto Response = upi::v1::CreateExtractResponse(
+		Builder,
+		UPI_SchemaVersion,
+		bSuccess ? upi::v1::ResponseStatus_Ok : upi::v1::ResponseStatus_Error,
+		Builder.CreateVector(Issues),
+		ContainerPath,
+		OutputDirectory,
+		Result.ExtractedFileCount,
+		Result.ErrorCount);
+
+	upi::v1::FinishExtractResponseBuffer(Builder, Response);
 	return UPI_CopyBuilderBytes(Builder);
 }
 

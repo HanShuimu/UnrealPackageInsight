@@ -64,6 +64,8 @@ function loadBackendLibrary({ dllPath, koffi, platform = process.platform }) {
     getBackendInfoV1: library.func('int UPI_GetBackendInfoV1(void*, int, void*)'),
     analyzePakV1: library.func('int UPI_AnalyzePakV1(str, str, void*, int, void*)'),
     analyzeIoStoreV1: library.func('int UPI_AnalyzeIoStoreV1(str, str, str, void*, int, void*)'),
+    extractPakV1: library.func('int UPI_ExtractPakV1(str, str, str, void*, int, void*)'),
+    extractIoStoreV1: library.func('int UPI_ExtractIoStoreV1(str, str, str, str, void*, int, void*)'),
   };
 }
 

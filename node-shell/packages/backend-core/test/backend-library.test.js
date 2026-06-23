@@ -9,6 +9,8 @@ test('loadBackendLibrary registers the expected V1 export signatures', () => {
     'int UPI_GetBackendInfoV1(void*, int, void*)': () => {},
     'int UPI_AnalyzePakV1(str, str, void*, int, void*)': () => {},
     'int UPI_AnalyzeIoStoreV1(str, str, str, void*, int, void*)': () => {},
+    'int UPI_ExtractPakV1(str, str, str, void*, int, void*)': () => {},
+    'int UPI_ExtractIoStoreV1(str, str, str, str, void*, int, void*)': () => {},
   };
   const koffi = {
     load(dllPath) {
@@ -28,12 +30,19 @@ test('loadBackendLibrary registers the expected V1 export signatures', () => {
     'int UPI_GetBackendInfoV1(void*, int, void*)',
     'int UPI_AnalyzePakV1(str, str, void*, int, void*)',
     'int UPI_AnalyzeIoStoreV1(str, str, str, void*, int, void*)',
+    'int UPI_ExtractPakV1(str, str, str, void*, int, void*)',
+    'int UPI_ExtractIoStoreV1(str, str, str, str, void*, int, void*)',
   ]);
   assert.equal(library.getBackendInfoV1, exports['int UPI_GetBackendInfoV1(void*, int, void*)']);
   assert.equal(library.analyzePakV1, exports['int UPI_AnalyzePakV1(str, str, void*, int, void*)']);
   assert.equal(
     library.analyzeIoStoreV1,
     exports['int UPI_AnalyzeIoStoreV1(str, str, str, void*, int, void*)']
+  );
+  assert.equal(library.extractPakV1, exports['int UPI_ExtractPakV1(str, str, str, void*, int, void*)']);
+  assert.equal(
+    library.extractIoStoreV1,
+    exports['int UPI_ExtractIoStoreV1(str, str, str, str, void*, int, void*)']
   );
 });
 
@@ -43,6 +52,8 @@ test('loadBackendLibrary pins the backend DLL on Windows before registering expo
     'int UPI_GetBackendInfoV1(void*, int, void*)': () => {},
     'int UPI_AnalyzePakV1(str, str, void*, int, void*)': () => {},
     'int UPI_AnalyzeIoStoreV1(str, str, str, void*, int, void*)': () => {},
+    'int UPI_ExtractPakV1(str, str, str, void*, int, void*)': () => {},
+    'int UPI_ExtractIoStoreV1(str, str, str, str, void*, int, void*)': () => {},
   };
   const koffi = {
     load(dllPath) {
@@ -110,6 +121,8 @@ test('loadBackendLibrary pins the backend DLL on Windows before registering expo
     ['backend-func', 'int UPI_GetBackendInfoV1(void*, int, void*)'],
     ['backend-func', 'int UPI_AnalyzePakV1(str, str, void*, int, void*)'],
     ['backend-func', 'int UPI_AnalyzeIoStoreV1(str, str, str, void*, int, void*)'],
+    ['backend-func', 'int UPI_ExtractPakV1(str, str, str, void*, int, void*)'],
+    ['backend-func', 'int UPI_ExtractIoStoreV1(str, str, str, str, void*, int, void*)'],
   ]);
 });
 

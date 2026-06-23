@@ -208,10 +208,12 @@ export default function App() {
   const statusText = useAppStore((state) => state.statusText);
   const isOpeningDirectory = useAppStore((state) => state.isOpeningDirectory);
   const isAnalyzing = useAppStore((state) => state.isAnalyzing);
+  const isExtracting = useAppStore((state) => state.isExtracting);
   const dialog = useAppStore((state) => state.dialog);
   const loadBackendInfo = useAppStore((state) => state.loadBackendInfo);
   const openDirectory = useAppStore((state) => state.openDirectory);
   const analyzeFile = useAppStore((state) => state.analyzeFile);
+  const extractSelectedContainer = useAppStore((state) => state.extractSelectedContainer);
   const submitAesKey = useAppStore((state) => state.submitAesKey);
   const cancelAesDialog = useAppStore((state) => state.cancelAesDialog);
   const openBackendSelection = useAppStore((state) => state.openBackendSelection);
@@ -340,7 +342,7 @@ export default function App() {
   const backendPillText = backendPillLabel(backendInfo, analysisResult, backendText);
   const packageRootLabel = scan?.root || 'No package directory opened';
   const selectedPackageId = detailSelection?.kind === 'package' ? detailSelection.row.id : '';
-  const shellBusy = isOpeningDirectory || isAnalyzing;
+  const shellBusy = isOpeningDirectory || isAnalyzing || isExtracting;
   const openedPaneMaxWidthValue = openedPaneMaxWidthForViewport(viewportWidth);
 
   return (
@@ -427,9 +429,12 @@ export default function App() {
               <div className="analysis-tabs-region" ref={analysisTabsRegionRef}>
                 <AnalysisTabs
                   result={analysisResult}
+                  selectedFilePath={selectedFilePath}
+                  isExtracting={isExtracting}
                   selectedPackageId={selectedPackageId}
                   tableHeight={tableHeight}
                   onDetailsSelectionChange={setDetailSelection}
+                  onExtractSelectedContainer={() => void extractSelectedContainer()}
                 />
               </div>
             </Spin>

@@ -25,3 +25,5 @@ typedef enum UPI_CallStatus
 UPI_BACKEND_API int32_t UPI_GetBackendInfoV1(uint8_t* OutBytes, int32_t OutCapacity, int32_t* RequiredSize);
 UPI_BACKEND_API int32_t UPI_AnalyzePakV1(const char* PakPathUtf8, const char* AesKeyUtf8OrNull, uint8_t* OutBytes, int32_t OutCapacity, int32_t* RequiredSize);
 UPI_BACKEND_API int32_t UPI_AnalyzeIoStoreV1(const char* UtocPathUtf8, const char* UcasPathUtf8, const char* AesKeyUtf8OrNull, uint8_t* OutBytes, int32_t OutCapacity, int32_t* RequiredSize);
+UPI_BACKEND_API int32_t UPI_ExtractPakV1(const char* PakPathUtf8, const char* OutputDirectoryUtf8, const char* AesKeyUtf8OrNull, uint8_t* OutBytes, int32_t OutCapacity, int32_t* RequiredSize);
+UPI_BACKEND_API int32_t UPI_ExtractIoStoreV1(const char* UtocPathUtf8, const char* UcasPathUtf8, const char* OutputDirectoryUtf8, const char* AesKeyUtf8OrNull, uint8_t* OutBytes, int32_t OutCapacity, int32_t* RequiredSize);

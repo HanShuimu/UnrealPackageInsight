@@ -22,6 +22,15 @@ const FILE_UNAVAILABLE_RESPONSE = {
   }],
 };
 
+const OUTPUT_DIRECTORY_REQUIRED_RESPONSE = {
+  status: 'Error',
+  issues: [{
+    severity: 'error',
+    code: 'container.output_directory_required',
+    message: 'Select an output directory before extracting.',
+  }],
+};
+
 function cloneErrorResponse(response) {
   return {
     status: response.status,
@@ -132,6 +141,21 @@ class AnalysisService {
     return cloneErrorResponse(UNSUPPORTED_CONTAINER_RESPONSE);
   }
 
+  async extract(filePath, outputDirectory) {
+    if (!outputDirectory || String(outputDirectory).trim() === '') {
+      return cloneErrorResponse(OUTPUT_DIRECTORY_REQUIRED_RESPONSE);
+    }
+
+    const kind = getContainerKind(filePath);
+    if (kind === 'pak') {
+      return this.extractPak(filePath, outputDirectory);
+    }
+    if (kind === 'utoc' || kind === 'ucas') {
+      return this.extractIoStore(filePath, outputDirectory);
+    }
+    return cloneErrorResponse(UNSUPPORTED_CONTAINER_RESPONSE);
+  }
+
   async analyzePak(pakPath) {
     const aesKey = this.aesSession.getKey();
     let stamp;
@@ -157,6 +181,18 @@ class AnalysisService {
     const result = attachBackendId(await client.analyzePak({ pakPath, aesKey }), backendId);
     this.cache.set(cacheKey, result);
     return result;
+  }
+
+  async extractPak(pakPath, outputDirectory) {
+    try {
+      await fileStamp(pakPath);
+    } catch {
+      return cloneErrorResponse(FILE_UNAVAILABLE_RESPONSE);
+    }
+
+    const aesKey = this.aesSession.getKey();
+    const { client } = await this.resolveBackend(pakPath);
+    return client.extractPak({ pakPath, outputDirectory, aesKey });
   }
 
   async analyzeIoStore(selectedPath) {
@@ -194,6 +230,27 @@ class AnalysisService {
     const result = attachBackendId(await client.analyzeIoStore({ utocPath, ucasPath, aesKey }), backendId);
     this.cache.set(cacheKey, result);
     return result;
+  }
+
+  async extractIoStore(selectedPath, outputDirectory) {
+    const selection = resolveIoStoreSelection(selectedPath, this.filePaths);
+    if (!selection?.ok) {
+      return {
+        status: 'Error',
+        issues: [{ ...selection.issue }],
+      };
+    }
+
+    const { utocPath, ucasPath, ucasPaths } = selection;
+    try {
+      await Promise.all([utocPath, ...ucasPaths].map((containerPath) => fileStamp(containerPath)));
+    } catch {
+      return cloneErrorResponse(FILE_UNAVAILABLE_RESPONSE);
+    }
+
+    const aesKey = this.aesSession.getKey();
+    const { client } = await this.resolveBackend(utocPath);
+    return client.extractIoStore({ utocPath, ucasPath, outputDirectory, aesKey });
   }
 }
 

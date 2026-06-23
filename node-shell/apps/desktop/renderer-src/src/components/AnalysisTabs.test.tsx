@@ -89,6 +89,26 @@ vi.mock('antd', async () => {
 
   return {
     ...actual,
+    Button: ({
+      children,
+      disabled,
+      loading,
+      onClick,
+    }: {
+      children?: React.ReactNode;
+      disabled?: boolean;
+      loading?: boolean;
+      onClick?(): void;
+    }) => (
+      <button
+        data-loading={loading ? 'true' : 'false'}
+        disabled={disabled}
+        type="button"
+        onClick={onClick}
+      >
+        {children}
+      </button>
+    ),
     Empty: ({ description }: { description?: React.ReactNode }) => (
       <div data-testid="empty-state">{description}</div>
     ),
@@ -242,7 +262,10 @@ function analysisResult(path = fooPath): AnalysisResult {
 function renderTabs(
   result: AnalysisResult | null,
   options: {
+    isExtracting?: boolean;
     onDetailsSelectionChange?: (selection: DetailSelection | null) => void;
+    onExtractSelectedContainer?: () => void;
+    selectedFilePath?: string;
     selectedPackageId?: string;
     tableHeight?: number;
   } = {},
@@ -250,9 +273,12 @@ function renderTabs(
   return render(
     <AnalysisTabs
       result={result}
+      selectedFilePath={options.selectedFilePath ?? 'C:\\Paks\\A.pak'}
+      isExtracting={options.isExtracting ?? false}
       selectedPackageId={options.selectedPackageId ?? ''}
       tableHeight={options.tableHeight ?? 500}
       onDetailsSelectionChange={options.onDetailsSelectionChange ?? (() => {})}
+      onExtractSelectedContainer={options.onExtractSelectedContainer ?? (() => {})}
     />,
   );
 }
@@ -311,9 +337,12 @@ describe('AnalysisTabs', () => {
     rerender(
       <AnalysisTabs
         result={analysisResult()}
+        selectedFilePath="C:\\Paks\\A.pak"
+        isExtracting={false}
         selectedPackageId=""
         tableHeight={500}
         onDetailsSelectionChange={() => {}}
+        onExtractSelectedContainer={() => {}}
       />,
     );
 
@@ -337,9 +366,12 @@ describe('AnalysisTabs', () => {
     rerender(
       <AnalysisTabs
         result={analysisResult(barPath)}
+        selectedFilePath="C:\\Paks\\A.pak"
+        isExtracting={false}
         selectedPackageId=""
         tableHeight={500}
         onDetailsSelectionChange={onDetailsSelectionChange}
+        onExtractSelectedContainer={() => {}}
       />,
     );
 
@@ -379,9 +411,12 @@ describe('AnalysisTabs', () => {
           issues: [{ severity: 'warning', code: 'UPI001', message: 'Needs attention' }],
           packages: [],
         }}
+        selectedFilePath="C:\\Paks\\A.pak"
+        isExtracting={false}
         selectedPackageId=""
         tableHeight={500}
         onDetailsSelectionChange={() => {}}
+        onExtractSelectedContainer={() => {}}
       />,
     );
 
@@ -391,9 +426,12 @@ describe('AnalysisTabs', () => {
     rerender(
       <AnalysisTabs
         result={{ overview: {}, issues: [], packages: [] }}
+        selectedFilePath="C:\\Paks\\A.pak"
+        isExtracting={false}
         selectedPackageId=""
         tableHeight={500}
         onDetailsSelectionChange={() => {}}
+        onExtractSelectedContainer={() => {}}
       />,
     );
 
@@ -419,9 +457,12 @@ describe('AnalysisTabs', () => {
     rerender(
       <AnalysisTabs
         result={analysisResult(barPath)}
+        selectedFilePath="C:\\Paks\\A.pak"
+        isExtracting={false}
         selectedPackageId=""
         tableHeight={500}
         onDetailsSelectionChange={() => {}}
+        onExtractSelectedContainer={() => {}}
       />,
     );
 
@@ -443,6 +484,56 @@ describe('AnalysisTabs', () => {
     await waitFor(() => {
       expect(screen.getByTestId('package-table')).toHaveAttribute('data-height', '312');
     });
+  });
+
+  test('Packages tab renders Extract to button and invokes the extract callback', () => {
+    const onExtractSelectedContainer = vi.fn();
+    renderTabs(analysisResult(), { onExtractSelectedContainer });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Packages' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Extract to...' }));
+
+    expect(onExtractSelectedContainer).toHaveBeenCalledTimes(1);
+  });
+
+  test('Extract to button is disabled without a selected file or analysis result', () => {
+    const { rerender } = renderTabs(null);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Packages' }));
+    expect(screen.getByRole('button', { name: 'Extract to...' })).toBeDisabled();
+
+    rerender(
+      <AnalysisTabs
+        result={analysisResult()}
+        selectedFilePath=""
+        isExtracting={false}
+        selectedPackageId=""
+        tableHeight={500}
+        onDetailsSelectionChange={() => {}}
+        onExtractSelectedContainer={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Packages' }));
+    expect(screen.getByRole('button', { name: 'Extract to...' })).toBeDisabled();
+  });
+
+  test('Extract to button is disabled when analysis has no package rows', () => {
+    renderTabs({ overview: { packageCount: 0 }, packages: [] });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Packages' }));
+
+    expect(screen.getByRole('button', { name: 'Extract to...' })).toBeDisabled();
+  });
+
+  test('Extract to button shows loading state while extraction is in progress', () => {
+    renderTabs(analysisResult(), { isExtracting: true });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Packages' }));
+
+    const button = screen.getByRole('button', { name: 'Extract to...' });
+    expect(button).toHaveAttribute('data-loading', 'true');
+    expect(button).toBeDisabled();
   });
 
   test('issues render only severity, code, and message table fields', () => {

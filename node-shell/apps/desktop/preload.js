@@ -13,6 +13,10 @@ contextBridge.exposeInMainWorld('upi', {
     return ipcRenderer.invoke('analysis:analyze', filePath);
   },
 
+  extractSelectedContainer(filePath) {
+    return ipcRenderer.invoke('analysis:extractSelectedContainer', filePath);
+  },
+
   submitAesKeyAndRetry(filePath, aesKey) {
     return ipcRenderer.invoke('analysis:submitAesKeyAndRetry', filePath, aesKey);
   },

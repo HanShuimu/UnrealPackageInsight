@@ -15,10 +15,10 @@ public class UnrealPackageInsightBackendTarget : TargetRules
 		bHasExports = true;
 
 		bBuildDeveloperTools = false;
-		bBuildWithEditorOnlyData = false;
+		bBuildWithEditorOnlyData = true;
 		bCompileAgainstEngine = false;
-		bCompileAgainstCoreUObject = false;
-		bCompileAgainstApplicationCore = false;
+		bCompileAgainstCoreUObject = true;
+		bCompileAgainstApplicationCore = true;
 		bCompileICU = false;
 		bUsesSlate = false;
 
