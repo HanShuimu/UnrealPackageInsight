@@ -1,6 +1,10 @@
 const { decodeBackendInfoResponse } = require('../../protocol/src/backend-info-decoder.js');
 const { loadBackendLibrary } = require('./backend-library.js');
 const { callBufferedExport } = require('./call-buffered-export.js');
+const {
+  extractIoStoreInWorker,
+  extractPakInWorker,
+} = require('./extract-worker-client.js');
 const { analyzeIoStoreInWorker } = require('./iostore-analysis-worker-client.js');
 const { analyzePakInWorker } = require('./pak-analysis-worker-client.js');
 
@@ -9,7 +13,9 @@ function createBackendClient({
   koffi,
   platform = process.platform,
   runIoStoreAnalysisWorker = analyzeIoStoreInWorker,
+  runIoStoreExtractWorker = extractIoStoreInWorker,
   runPakAnalysisWorker = analyzePakInWorker,
+  runPakExtractWorker = extractPakInWorker,
 }) {
   const library = loadBackendLibrary({ dllPath, koffi, platform });
 
@@ -35,6 +41,25 @@ function createBackendClient({
         dllPath,
         utocPath,
         ucasPath,
+        aesKey: aesKey ?? '',
+      });
+    },
+
+    extractPak({ pakPath, outputDirectory, aesKey = '' }) {
+      return runPakExtractWorker({
+        dllPath,
+        pakPath,
+        outputDirectory,
+        aesKey: aesKey ?? '',
+      });
+    },
+
+    extractIoStore({ utocPath, ucasPath, outputDirectory, aesKey = '' }) {
+      return runIoStoreExtractWorker({
+        dllPath,
+        utocPath,
+        ucasPath,
+        outputDirectory,
         aesKey: aesKey ?? '',
       });
     },
