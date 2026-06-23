@@ -4,9 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { buildPackageTree, type PackageRow, type PackageTreeItem } from '../utils/analysisViewModel';
 import { VisibleTreeParentTrail } from './VisibleTreeParentTrail';
 import {
-  VISIBLE_TREE_PARENT_TRAIL_HEIGHT,
   flattenVisibleTreeRows,
   visibleTreeParentTrail,
+  visibleTreeParentTrailHeight,
 } from './visibleTreeParents';
 
 type PackageContentTreeProps = {
@@ -72,7 +72,7 @@ export function PackageContentTree({ rows, height, selectedPackageId, onSelectPa
     flattenVisibleTreeRows(treeState.treeData, expandedKeys)
   ), [expandedKeys, treeState.treeData]);
   const parentTrail = visibleTreeParentTrail(visibleRows, scrollTop);
-  const treeHeight = Math.max(0, height - VISIBLE_TREE_PARENT_TRAIL_HEIGHT);
+  const treeHeight = Math.max(0, height - visibleTreeParentTrailHeight(parentTrail));
   const selectedTreeKey = selectedPackageId ? treeState.rowIdToKey.get(selectedPackageId) : undefined;
   const selectedKeys = selectedTreeKey ? [selectedTreeKey] : [];
 

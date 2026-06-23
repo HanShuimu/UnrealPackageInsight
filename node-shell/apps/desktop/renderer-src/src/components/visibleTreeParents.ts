@@ -1,7 +1,8 @@
 import type { Key, ReactNode } from 'react';
 
 export const VISIBLE_TREE_ROW_HEIGHT = 30;
-export const VISIBLE_TREE_PARENT_TRAIL_HEIGHT = 38;
+export const VISIBLE_TREE_PARENT_TRAIL_ROW_HEIGHT = 30;
+export const VISIBLE_TREE_PARENT_TRAIL_GAP = 8;
 
 export type VisibleTreeNode = {
   key: Key;
@@ -65,4 +66,12 @@ export function visibleTreeParentTrail(
   }
 
   return row.parentTitles;
+}
+
+export function visibleTreeParentTrailHeight(trail: string[]): number {
+  if (trail.length === 0) {
+    return 0;
+  }
+
+  return (trail.length * VISIBLE_TREE_PARENT_TRAIL_ROW_HEIGHT) + VISIBLE_TREE_PARENT_TRAIL_GAP;
 }

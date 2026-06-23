@@ -11,9 +11,9 @@ import {
   type PackageTreeDataNode,
 } from './packageTreeData';
 import {
-  VISIBLE_TREE_PARENT_TRAIL_HEIGHT,
   flattenVisibleTreeRows,
   visibleTreeParentTrail,
+  visibleTreeParentTrailHeight,
 } from './visibleTreeParents';
 
 type PackageTreeProps = {
@@ -69,7 +69,7 @@ export function PackageTree({ scan, selectedFilePath, height, onSelectFile }: Pa
     flattenVisibleTreeRows(treeState?.rawTreeData ?? [], expandedKeys)
   ), [expandedKeys, treeState?.rawTreeData]);
   const parentTrail = visibleTreeParentTrail(visibleRows, scrollTop);
-  const treeHeight = Math.max(0, height - VISIBLE_TREE_PARENT_TRAIL_HEIGHT);
+  const treeHeight = Math.max(0, height - visibleTreeParentTrailHeight(parentTrail));
 
   useEffect(() => {
     setScrollTop(0);

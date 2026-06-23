@@ -153,6 +153,7 @@ describe('PackageContentTree', () => {
 
     fireEvent.scroll(screen.getByTestId('mock-tree'), { target: { scrollTop: 60 } });
 
+    expect(screen.getByTestId('mock-tree')).toHaveAttribute('data-height', '292');
     expect(screen.getByLabelText('Current visible parents')).toHaveTextContent('Engine');
     expect(screen.getByLabelText('Current visible parents')).toHaveTextContent('Config');
   });

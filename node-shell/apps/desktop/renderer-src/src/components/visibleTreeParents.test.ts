@@ -1,7 +1,10 @@
 import { describe, expect, test } from 'vitest';
 import {
+  VISIBLE_TREE_PARENT_TRAIL_GAP,
+  VISIBLE_TREE_PARENT_TRAIL_ROW_HEIGHT,
   VISIBLE_TREE_ROW_HEIGHT,
   flattenVisibleTreeRows,
+  visibleTreeParentTrailHeight,
   visibleTreeParentTrail,
   type VisibleTreeNode,
 } from './visibleTreeParents';
@@ -56,5 +59,11 @@ describe('visibleTreeParents', () => {
       'root/a.pak',
       'root/nested',
     ]);
+  });
+
+  test('sizes the parent trail by visible parent row count', () => {
+    expect(visibleTreeParentTrailHeight(['Root', 'Nested'])).toBe(
+      (VISIBLE_TREE_PARENT_TRAIL_ROW_HEIGHT * 2) + VISIBLE_TREE_PARENT_TRAIL_GAP,
+    );
   });
 });
