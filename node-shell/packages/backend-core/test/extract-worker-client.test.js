@@ -69,6 +69,54 @@ test('runExtractWorker passes payload on stdin and reports worker failures', () 
   assert.equal(JSON.parse(calls[0].options.input).aesKey, 'secret');
 });
 
+test('runExtractWorker reports timeout failures with extract response context', () => {
+  const response = runExtractWorker({
+    kind: 'pak',
+    resultPrefix: PAK_EXTRACT_RESULT_PREFIX,
+    workerPath: 'worker.js',
+    nodePath: 'node.exe',
+    payload: { dllPath: 'backend.dll', pakPath: 'A.pak', outputDirectory: 'D:\\Out', aesKey: 'secret' },
+    spawnSync() {
+      return {
+        error: Object.assign(new Error('timed out'), { code: 'ETIMEDOUT' }),
+        status: null,
+        signal: 'SIGTERM',
+        stdout: '',
+      };
+    },
+  });
+
+  assert.equal(response.status, 1);
+  assert.equal(response.containerPath, 'A.pak');
+  assert.equal(response.outputDirectory, 'D:\\Out');
+  assert.equal(response.errorCount, 1);
+  assert.equal(response.issues[0].code, 'pak.extract_worker_timeout');
+  assert.match(response.issues[0].message, /timed out|timeout/i);
+});
+
+test('runExtractWorker parses prefixed worker result on nonzero exit', () => {
+  const response = runExtractWorker({
+    kind: 'pak',
+    resultPrefix: PAK_EXTRACT_RESULT_PREFIX,
+    workerPath: 'worker.js',
+    nodePath: 'node.exe',
+    payload: { dllPath: 'backend.dll', pakPath: 'A.pak', outputDirectory: 'D:\\Out', aesKey: 'secret' },
+    spawnSync() {
+      return {
+        status: 1,
+        signal: null,
+        stdout: `${PAK_EXTRACT_RESULT_PREFIX}${JSON.stringify({ ok: false, error: 'native decode failed' })}\n`,
+      };
+    },
+  });
+
+  assert.equal(response.status, 1);
+  assert.equal(response.containerPath, 'A.pak');
+  assert.equal(response.outputDirectory, 'D:\\Out');
+  assert.equal(response.issues[0].code, 'pak.extract_worker_failed');
+  assert.equal(response.issues[0].message, 'native decode failed');
+});
+
 test('parseExtractWorkerResult returns decoded payloads and rejects malformed worker output', () => {
   const decoded = {
     schemaVersion: 1,
@@ -94,6 +142,20 @@ test('parseExtractWorkerResult returns decoded payloads and rejects malformed wo
   });
   assert.equal(malformed.status, 1);
   assert.equal(malformed.issues[0].code, 'iostore.extract_worker_protocol_error');
+});
+
+test('parseExtractWorkerResult falls back to IoStore ucasPath when utocPath is empty', () => {
+  const response = parseExtractWorkerResult({
+    kind: 'iostore',
+    resultPrefix: IOSTORE_EXTRACT_RESULT_PREFIX,
+    payload: { utocPath: '', ucasPath: 'global.ucas', outputDirectory: 'D:\\Out' },
+    stdout: '',
+  });
+
+  assert.equal(response.status, 1);
+  assert.equal(response.containerPath, 'global.ucas');
+  assert.equal(response.outputDirectory, 'D:\\Out');
+  assert.equal(response.issues[0].code, 'iostore.extract_worker_protocol_error');
 });
 
 test('parseExtractWorkerResult rejects successful results with the wrong response type', () => {
