@@ -9,6 +9,10 @@ const { loadBackendLibrary } = require('./backend-library.js');
 const { callBufferedExport } = require('./call-buffered-export.js');
 const { PAK_EXTRACT_RESULT_PREFIX } = require('./extract-worker-client.js');
 
+function defaultWrite(chunk) {
+  process.stdout.write(chunk);
+}
+
 function readPayloadFromStdin() {
   return fs.readFileSync(0, 'utf8');
 }
@@ -21,23 +25,30 @@ function decodePayload(input) {
   return JSON.parse(input);
 }
 
-function writeResult(payload) {
-  process.stdout.write(`${PAK_EXTRACT_RESULT_PREFIX}${JSON.stringify(payload)}\n`);
+function writeResult(payload, write = defaultWrite) {
+  write(`${PAK_EXTRACT_RESULT_PREFIX}${JSON.stringify(payload)}\n`);
 }
 
-function main(input = readPayloadFromStdin()) {
+function main(input = readPayloadFromStdin(), dependencies = {}) {
+  const {
+    koffi: koffiImpl = koffi,
+    loadBackendLibrary: loadBackendLibraryImpl = loadBackendLibrary,
+    callBufferedExport: callBufferedExportImpl = callBufferedExport,
+    decodeExtractResponse: decodeExtractResponseImpl = decodeExtractResponse,
+    write = defaultWrite,
+  } = dependencies;
   const payload = decodePayload(input);
-  const library = loadBackendLibrary({ dllPath: payload.dllPath, koffi });
-  const bytes = callBufferedExport({
+  const library = loadBackendLibraryImpl({ dllPath: payload.dllPath, koffi: koffiImpl });
+  const bytes = callBufferedExportImpl({
     fn: library.extractPakV1,
-    koffi,
+    koffi: koffiImpl,
     args: [payload.pakPath || '', payload.outputDirectory || '', payload.aesKey ?? ''],
   });
 
   writeResult({
     ok: true,
-    response: decodeExtractResponse(bytes),
-  });
+    response: decodeExtractResponseImpl(bytes),
+  }, write);
 }
 
 if (require.main === module) {
@@ -56,4 +67,5 @@ module.exports = {
   decodePayload,
   main,
   readPayloadFromStdin,
+  writeResult,
 };

@@ -79,6 +79,41 @@ function findWorkerResult(stdout, resultPrefix) {
     .find((line) => line.startsWith(resultPrefix));
 }
 
+function extractResponseValidationError(response) {
+  if (!response || typeof response !== 'object' || Array.isArray(response)) {
+    return 'expected an object';
+  }
+
+  const requiredFields = [
+    ['schemaVersion', 'number'],
+    ['status', 'number'],
+    ['issues', 'array'],
+    ['containerPath', 'string'],
+    ['outputDirectory', 'string'],
+    ['extractedFileCount', 'number'],
+    ['errorCount', 'number'],
+  ];
+
+  for (const [fieldName, expectedType] of requiredFields) {
+    if (expectedType === 'array') {
+      if (!Array.isArray(response[fieldName])) {
+        return `${fieldName} must be an array`;
+      }
+      continue;
+    }
+
+    if (typeof response[fieldName] !== expectedType) {
+      return `${fieldName} must be a ${expectedType}`;
+    }
+  }
+
+  return null;
+}
+
+function isExtractResponseLike(response) {
+  return extractResponseValidationError(response) === null;
+}
+
 function parseExtractWorkerResult({ kind, resultPrefix, payload, stdout }) {
   const resultLine = findWorkerResult(stdout, resultPrefix);
   if (!resultLine) {
@@ -102,7 +137,25 @@ function parseExtractWorkerResult({ kind, resultPrefix, payload, stdout }) {
     });
   }
 
-  if (!parsed || parsed.ok !== true || !parsed.response) {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return createExtractWorkerErrorResponse({
+      kind,
+      payload,
+      code: `${kind}.extract_worker_protocol_error`,
+      message: `${kind} extract worker returned invalid result payload.`,
+    });
+  }
+
+  if (parsed.ok === true && !isExtractResponseLike(parsed.response)) {
+    return createExtractWorkerErrorResponse({
+      kind,
+      payload,
+      code: `${kind}.extract_worker_protocol_error`,
+      message: `${kind} extract worker returned invalid extract response: ${extractResponseValidationError(parsed.response)}.`,
+    });
+  }
+
+  if (parsed.ok !== true || !parsed.response) {
     return createExtractWorkerErrorResponse({
       kind,
       payload,
@@ -145,6 +198,10 @@ function runExtractWorker({
         code: `${kind}.extract_worker_timeout`,
         message: `${kind} extract worker timed out after ${timeoutMs} ms.`,
       });
+    }
+
+    if (findWorkerResult(result.stdout, resultPrefix)) {
+      return parseExtractWorkerResult({ kind, resultPrefix, payload, stdout: result.stdout });
     }
 
     return createExtractWorkerErrorResponse({
@@ -205,6 +262,7 @@ module.exports = {
   createExtractWorkerErrorResponse,
   extractIoStoreInWorker,
   extractPakInWorker,
+  isExtractResponseLike,
   parseExtractWorkerResult,
   runExtractWorker,
   serializeIoStoreExtractPayload,

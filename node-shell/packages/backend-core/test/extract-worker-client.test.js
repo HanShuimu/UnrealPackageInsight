@@ -70,7 +70,15 @@ test('runExtractWorker passes payload on stdin and reports worker failures', () 
 });
 
 test('parseExtractWorkerResult returns decoded payloads and rejects malformed worker output', () => {
-  const decoded = { status: 0, issues: [], containerPath: 'A.pak', outputDirectory: 'D:\\Out' };
+  const decoded = {
+    schemaVersion: 1,
+    status: 0,
+    issues: [],
+    containerPath: 'A.pak',
+    outputDirectory: 'D:\\Out',
+    extractedFileCount: 2,
+    errorCount: 0,
+  };
   assert.deepEqual(parseExtractWorkerResult({
     kind: 'pak',
     resultPrefix: PAK_EXTRACT_RESULT_PREFIX,
@@ -86,4 +94,65 @@ test('parseExtractWorkerResult returns decoded payloads and rejects malformed wo
   });
   assert.equal(malformed.status, 1);
   assert.equal(malformed.issues[0].code, 'iostore.extract_worker_protocol_error');
+});
+
+test('parseExtractWorkerResult rejects successful results with the wrong response type', () => {
+  const response = parseExtractWorkerResult({
+    kind: 'pak',
+    resultPrefix: PAK_EXTRACT_RESULT_PREFIX,
+    payload: { pakPath: 'A.pak', outputDirectory: 'D:\\Out' },
+    stdout: `${PAK_EXTRACT_RESULT_PREFIX}${JSON.stringify({ ok: true, response: 'not an object' })}\n`,
+  });
+
+  assert.equal(response.status, 1);
+  assert.equal(response.containerPath, 'A.pak');
+  assert.equal(response.outputDirectory, 'D:\\Out');
+  assert.equal(response.issues[0].code, 'pak.extract_worker_protocol_error');
+  assert.match(response.issues[0].message, /invalid extract response/i);
+});
+
+test('parseExtractWorkerResult rejects null worker result payloads without throwing', () => {
+  assert.doesNotThrow(() => parseExtractWorkerResult({
+    kind: 'pak',
+    resultPrefix: PAK_EXTRACT_RESULT_PREFIX,
+    payload: { pakPath: 'A.pak', outputDirectory: 'D:\\Out' },
+    stdout: `${PAK_EXTRACT_RESULT_PREFIX}null\n`,
+  }));
+
+  const response = parseExtractWorkerResult({
+    kind: 'pak',
+    resultPrefix: PAK_EXTRACT_RESULT_PREFIX,
+    payload: { pakPath: 'A.pak', outputDirectory: 'D:\\Out' },
+    stdout: `${PAK_EXTRACT_RESULT_PREFIX}null\n`,
+  });
+
+  assert.equal(response.status, 1);
+  assert.equal(response.containerPath, 'A.pak');
+  assert.equal(response.outputDirectory, 'D:\\Out');
+  assert.equal(response.issues[0].code, 'pak.extract_worker_protocol_error');
+});
+
+test('parseExtractWorkerResult rejects successful results missing required response fields', () => {
+  const response = parseExtractWorkerResult({
+    kind: 'iostore',
+    resultPrefix: IOSTORE_EXTRACT_RESULT_PREFIX,
+    payload: { utocPath: 'global.utoc', outputDirectory: 'D:\\Out' },
+    stdout: `${IOSTORE_EXTRACT_RESULT_PREFIX}${JSON.stringify({
+      ok: true,
+      response: {
+        schemaVersion: 1,
+        status: 0,
+        issues: [],
+        containerPath: 'global.utoc',
+        outputDirectory: 'D:\\Out',
+        extractedFileCount: 2,
+      },
+    })}\n`,
+  });
+
+  assert.equal(response.status, 1);
+  assert.equal(response.containerPath, 'global.utoc');
+  assert.equal(response.outputDirectory, 'D:\\Out');
+  assert.equal(response.issues[0].code, 'iostore.extract_worker_protocol_error');
+  assert.match(response.issues[0].message, /errorCount/);
 });
