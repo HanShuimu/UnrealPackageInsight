@@ -518,6 +518,14 @@ describe('AnalysisTabs', () => {
     expect(screen.getByRole('button', { name: 'Extract to...' })).toBeDisabled();
   });
 
+  test('Extract to button is disabled when analysis has no package rows', () => {
+    renderTabs({ overview: { packageCount: 0 }, packages: [] });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Packages' }));
+
+    expect(screen.getByRole('button', { name: 'Extract to...' })).toBeDisabled();
+  });
+
   test('Extract to button shows loading state while extraction is in progress', () => {
     renderTabs(analysisResult(), { isExtracting: true });
 

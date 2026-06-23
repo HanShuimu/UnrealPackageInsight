@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { createAppStore } from './appStore';
-import type { AnalysisResult, BackendSelectionRequest, PackageScan, UpiClient } from '../types/upi';
+import type { AnalysisResult, BackendSelectionRequest, ExtractResult, PackageScan, UpiClient } from '../types/upi';
 
 type Deferred<T> = {
   promise: Promise<T>;
@@ -396,6 +396,70 @@ describe('appStore', () => {
 
     expect(store.getState().statusText).toBe('Extract failed');
     expect(store.getState().analysisResult?.issues?.[0]?.code).toBe('extract.failed');
+    expect(store.getState().isExtracting).toBe(false);
+  });
+
+  test('stale extract failure does not overwrite newer same-file analysis result', async () => {
+    const extract = createDeferred<ExtractResult | null>();
+    let analyzeCount = 0;
+    const store = createAppStore(
+      createClient({
+        analyze: async () => {
+          analyzeCount += 1;
+          return {
+            status: 'OK',
+            overview: { selected: analyzeCount === 1 ? 'initial' : 'newer' },
+            packages: [],
+            compressedBlocks: [],
+          };
+        },
+        extractSelectedContainer: () => extract.promise,
+      }),
+    );
+
+    await store.getState().analyzeFile('C:\\Paks\\A.pak');
+    const extractRun = store.getState().extractSelectedContainer();
+    await store.getState().analyzeFile('C:\\Paks\\A.pak');
+
+    extract.resolve({
+      status: 'Error',
+      issues: [{ severity: 'error', code: 'extract.failed', message: 'Extraction failed.' }],
+      containerPath: 'C:\\Paks\\A.pak',
+      outputDirectory: 'D:\\Out',
+      extractedFileCount: 0,
+      errorCount: 1,
+    });
+    await extractRun;
+
+    expect(store.getState().analysisResult?.overview).toEqual({ selected: 'newer' });
+    expect(store.getState().analysisResult?.issues?.[0]?.code).not.toBe('extract.failed');
+    expect(store.getState().statusText).toBe('Analysis ready');
+    expect(store.getState().isExtracting).toBe(false);
+  });
+
+  test('extractSelectedContainer creates a fallback issue when error result has no issues', async () => {
+    const store = createAppStore(
+      createClient({
+        extractSelectedContainer: async (filePath) => ({
+          status: 'Error',
+          issues: [],
+          containerPath: filePath,
+          outputDirectory: 'D:\\Out',
+          extractedFileCount: 0,
+          errorCount: 1,
+        }),
+      }),
+    );
+    await store.getState().analyzeFile('C:\\Paks\\A.pak');
+
+    await store.getState().extractSelectedContainer();
+
+    expect(store.getState().statusText).toBe('Extract failed');
+    expect(store.getState().analysisResult?.issues?.[0]).toEqual({
+      severity: 'error',
+      code: 'renderer.extract_failed',
+      message: 'Extraction failed.',
+    });
     expect(store.getState().isExtracting).toBe(false);
   });
 });

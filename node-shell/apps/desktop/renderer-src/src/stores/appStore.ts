@@ -110,15 +110,36 @@ function isErrorStatus(status: unknown): boolean {
   return status === 'Error' || status === 1;
 }
 
+function createFallbackExtractIssue(): Issue {
+  return {
+    severity: 'error',
+    code: 'renderer.extract_failed',
+    message: 'Extraction failed.',
+  };
+}
+
 function createAnalysisResultFromExtract(result: ExtractResult): AnalysisResult {
+  const issues = Array.isArray(result.issues) ? result.issues : [];
+
   return {
     status: result.status,
-    issues: Array.isArray(result.issues) ? result.issues : [],
+    issues: issues.length > 0 ? issues : [createFallbackExtractIssue()],
   };
 }
 
 function isCurrentAnalysis(state: AppState, filePath: string, requestId: number): boolean {
   return state.selectedFilePath === filePath && state.analysisRequestId === requestId;
+}
+
+function isCurrentExtract(
+  state: AppState,
+  filePath: string,
+  extractRequestId: number,
+  analysisRequestId: number,
+): boolean {
+  return state.selectedFilePath === filePath
+    && state.extractRequestId === extractRequestId
+    && state.analysisRequestId === analysisRequestId;
 }
 
 function isCurrentOpenDirectory(state: AppState, requestId: number): boolean {
@@ -244,7 +265,9 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
         analysisResult: null,
         statusText: 'Analyzing...',
         isAnalyzing: true,
+        isExtracting: false,
         analysisRequestId: requestId,
+        extractRequestId: state.extractRequestId + 1,
         dialog: {
           ...state.dialog,
           aesFilePath: '',
@@ -317,11 +340,12 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
       }
 
       const requestId = get().extractRequestId + 1;
+      const analysisRequestId = get().analysisRequestId;
       set({ extractRequestId: requestId, isExtracting: true, statusText: 'Extracting...' });
 
       try {
         const result = await client.extractSelectedContainer(filePath);
-        if (get().extractRequestId !== requestId || get().selectedFilePath !== filePath) {
+        if (!isCurrentExtract(get(), filePath, requestId, analysisRequestId)) {
           return;
         }
 
@@ -340,7 +364,7 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
 
         set({ statusText: 'Extract complete' });
       } catch (error) {
-        if (get().extractRequestId !== requestId || get().selectedFilePath !== filePath) {
+        if (!isCurrentExtract(get(), filePath, requestId, analysisRequestId)) {
           return;
         }
 
@@ -349,7 +373,7 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
           statusText: 'Extract failed',
         });
       } finally {
-        if (get().extractRequestId === requestId && get().selectedFilePath === filePath) {
+        if (isCurrentExtract(get(), filePath, requestId, analysisRequestId)) {
           set({ isExtracting: false });
         }
       }
