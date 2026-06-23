@@ -16,6 +16,8 @@ function createBackendClient() {
   const calls = {
     pak: [],
     iostore: [],
+    extractPak: [],
+    extractIoStore: [],
   };
   return {
     calls,
@@ -27,6 +29,14 @@ function createBackendClient() {
       async analyzeIoStore(request) {
         calls.iostore.push(request);
         return { status: 'OK', kind: 'iostore', request };
+      },
+      async extractPak(request) {
+        calls.extractPak.push(request);
+        return { status: 'OK', kind: 'extractPak', request };
+      },
+      async extractIoStore(request) {
+        calls.extractIoStore.push(request);
+        return { status: 'OK', kind: 'extractIoStore', request };
       },
     },
   };
@@ -228,6 +238,105 @@ test('detects AES-required issue codes by exact suffix', () => {
   assert.equal(hasAesRequiredIssue({ issues: [{ code: 'pak.aes_key_required.extra' }] }), false);
   assert.equal(hasAesRequiredIssue({ issues: [{ code: 'pak_aes_key_required' }] }), false);
   assert.equal(hasAesRequiredIssue({ status: 'OK' }), false);
+});
+
+test('extracts Pak selections with the session AES key', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-analysis-service-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const pakPath = path.join(root, 'pakchunk0-Windows.pak');
+  createFile(pakPath, 'pak');
+  const { calls, client } = createBackendClient();
+  const aesSession = new AesKeySession();
+  aesSession.setKey('0xABCDEFABCDEFABCDEFABCDEFABCDEFAB');
+  const service = new AnalysisService({ backendClient: client, filePaths: [pakPath], aesSession });
+
+  const result = await service.extract(pakPath, 'D:\\Out');
+
+  assert.equal(result.status, 'OK');
+  assert.deepEqual(calls.extractPak, [{
+    pakPath,
+    outputDirectory: 'D:\\Out',
+    aesKey: 'abcdefabcdefabcdefabcdefabcdefab',
+  }]);
+});
+
+test('extracts IoStore selections with the resolved pair and session AES key', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-analysis-service-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const utocPath = path.join(root, 'global.utoc');
+  const ucasPath = path.join(root, 'global.ucas');
+  createFile(utocPath, 'utoc');
+  createFile(ucasPath, 'ucas');
+  const { calls, client } = createBackendClient();
+  const aesSession = new AesKeySession();
+  aesSession.setKey('0xABCDEFABCDEFABCDEFABCDEFABCDEFAB');
+  const service = new AnalysisService({ backendClient: client, filePaths: [utocPath, ucasPath], aesSession });
+
+  const result = await service.extract(ucasPath, 'D:\\Out');
+
+  assert.equal(result.status, 'OK');
+  assert.deepEqual(calls.extractIoStore, [{
+    utocPath,
+    ucasPath,
+    outputDirectory: 'D:\\Out',
+    aesKey: 'abcdefabcdefabcdefabcdefabcdefab',
+  }]);
+});
+
+test('extract returns iostore.pair_missing before calling backend for orphan .ucas selections', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upi-analysis-service-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const ucasPath = path.join(root, 'global.ucas');
+  createFile(ucasPath, 'ucas');
+  const { calls, client } = createBackendClient();
+  const service = new AnalysisService({ backendClient: client, filePaths: [ucasPath] });
+
+  const result = await service.extract(ucasPath, 'D:\\Out');
+
+  assert.deepEqual(result, {
+    status: 'Error',
+    issues: [{
+      severity: 'error',
+      code: 'iostore.pair_missing',
+      message: 'Selected IoStore file is missing its matching .utoc or .ucas file.',
+    }],
+  });
+  assert.deepEqual(calls.extractIoStore, []);
+});
+
+test('extract returns container.unsupported for unsupported files', async () => {
+  const { calls, client } = createBackendClient();
+  const service = new AnalysisService({ backendClient: client, filePaths: [] });
+
+  const result = await service.extract('C:\\Paks\\readme.txt', 'D:\\Out');
+
+  assert.deepEqual(result, {
+    status: 'Error',
+    issues: [{
+      severity: 'error',
+      code: 'container.unsupported',
+      message: 'Unsupported container file type.',
+    }],
+  });
+  assert.deepEqual(calls.extractPak, []);
+  assert.deepEqual(calls.extractIoStore, []);
+});
+
+test('extract returns container.output_directory_required without calling backend', async () => {
+  const { calls, client } = createBackendClient();
+  const service = new AnalysisService({ backendClient: client, filePaths: ['C:\\Paks\\A.pak'] });
+
+  const result = await service.extract('C:\\Paks\\A.pak', '');
+
+  assert.deepEqual(result, {
+    status: 'Error',
+    issues: [{
+      severity: 'error',
+      code: 'container.output_directory_required',
+      message: 'Select an output directory before extracting.',
+    }],
+  });
+  assert.deepEqual(calls.extractPak, []);
 });
 
 test('resolves backend by selected Pak file and includes backend id in cache key', async (t) => {
