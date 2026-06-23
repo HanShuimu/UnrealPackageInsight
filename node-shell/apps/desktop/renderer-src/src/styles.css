@@ -409,9 +409,12 @@ body {
 }
 
 .package-mode-row {
+  align-items: center;
   display: flex;
-  justify-content: flex-end;
   flex: 0 0 auto;
+  gap: 12px;
+  justify-content: space-between;
+  min-height: 32px;
   padding-bottom: 12px;
 }
 

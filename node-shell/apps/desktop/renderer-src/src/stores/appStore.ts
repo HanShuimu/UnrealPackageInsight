@@ -3,6 +3,7 @@ import type {
   AnalysisResult,
   BackendInfo,
   BackendSelectionRequest,
+  ExtractResult,
   Issue,
   PackageScan,
   UpiClient,
@@ -25,12 +26,15 @@ export type AppState = {
   statusText: string;
   isOpeningDirectory: boolean;
   isAnalyzing: boolean;
+  isExtracting: boolean;
   analysisRequestId: number;
+  extractRequestId: number;
   openDirectoryRequestId: number;
   dialog: DialogState;
   loadBackendInfo(): Promise<void>;
   openDirectory(): Promise<void>;
   analyzeFile(filePath: string): Promise<void>;
+  extractSelectedContainer(): Promise<void>;
   submitAesKey(aesKey: string): Promise<void>;
   cancelAesDialog(): void;
   openBackendSelection(): Promise<void>;
@@ -102,6 +106,17 @@ function createErrorResult(code: string, error: unknown): AnalysisResult {
   };
 }
 
+function isErrorStatus(status: unknown): boolean {
+  return status === 'Error' || status === 1;
+}
+
+function createAnalysisResultFromExtract(result: ExtractResult): AnalysisResult {
+  return {
+    status: result.status,
+    issues: Array.isArray(result.issues) ? result.issues : [],
+  };
+}
+
 function isCurrentAnalysis(state: AppState, filePath: string, requestId: number): boolean {
   return state.selectedFilePath === filePath && state.analysisRequestId === requestId;
 }
@@ -154,7 +169,9 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
     statusText: 'Idle',
     isOpeningDirectory: false,
     isAnalyzing: false,
+    isExtracting: false,
     analysisRequestId: 0,
+    extractRequestId: 0,
     openDirectoryRequestId: 0,
     dialog: createDialogState(),
 
@@ -175,7 +192,13 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
 
     async openDirectory() {
       const requestId = get().openDirectoryRequestId + 1;
-      set({ openDirectoryRequestId: requestId, isOpeningDirectory: true, statusText: 'Opening...' });
+      set((state) => ({
+        extractRequestId: state.extractRequestId + 1,
+        isExtracting: false,
+        openDirectoryRequestId: requestId,
+        isOpeningDirectory: true,
+        statusText: 'Opening...',
+      }));
       try {
         const scan = await client.openPackageDirectory();
         if (!isCurrentOpenDirectory(get(), requestId)) {
@@ -193,7 +216,9 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
           analysisResult: null,
           dialog: createDialogState(),
           analysisRequestId: state.analysisRequestId + 1,
+          extractRequestId: state.extractRequestId + 1,
           isAnalyzing: false,
+          isExtracting: false,
           statusText: formatScanStatus(scan),
         }));
       } catch (error) {
@@ -280,6 +305,52 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
       } finally {
         if (isCurrentAnalysis(get(), filePath, requestId)) {
           set({ isAnalyzing: false });
+        }
+      }
+    },
+
+    async extractSelectedContainer() {
+      const filePath = get().selectedFilePath;
+      if (!filePath) {
+        set({ statusText: 'Select a container first' });
+        return;
+      }
+
+      const requestId = get().extractRequestId + 1;
+      set({ extractRequestId: requestId, isExtracting: true, statusText: 'Extracting...' });
+
+      try {
+        const result = await client.extractSelectedContainer(filePath);
+        if (get().extractRequestId !== requestId || get().selectedFilePath !== filePath) {
+          return;
+        }
+
+        if (!result) {
+          set({ statusText: 'Extract canceled' });
+          return;
+        }
+
+        if (isErrorStatus(result.status)) {
+          set({
+            analysisResult: createAnalysisResultFromExtract(result),
+            statusText: 'Extract failed',
+          });
+          return;
+        }
+
+        set({ statusText: 'Extract complete' });
+      } catch (error) {
+        if (get().extractRequestId !== requestId || get().selectedFilePath !== filePath) {
+          return;
+        }
+
+        set({
+          analysisResult: createErrorResult('renderer.extract_failed', error),
+          statusText: 'Extract failed',
+        });
+      } finally {
+        if (get().extractRequestId === requestId && get().selectedFilePath === filePath) {
+          set({ isExtracting: false });
         }
       }
     },

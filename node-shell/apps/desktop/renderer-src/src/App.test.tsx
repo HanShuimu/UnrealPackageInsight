@@ -16,6 +16,7 @@ const mockHarness = vi.hoisted(() => ({
     cancelAesDialog: vi.fn(),
     cancelBackendDialog: vi.fn(),
     chooseBackend: vi.fn(() => Promise.resolve()),
+    extractSelectedContainer: vi.fn(() => Promise.resolve()),
     loadBackendInfo: vi.fn(() => Promise.resolve()),
     openDirectory: vi.fn(() => Promise.resolve()),
     openBackendSelection: vi.fn(() => Promise.resolve()),
@@ -52,11 +53,17 @@ vi.mock('./stores/useAppStore', () => ({
 
 vi.mock('./components/AnalysisTabs', () => ({
   AnalysisTabs: ({
+    isExtracting,
     onDetailsSelectionChange,
+    onExtractSelectedContainer,
+    selectedFilePath,
     selectedPackageId,
     tableHeight,
   }: {
+    isExtracting: boolean;
     onDetailsSelectionChange(selection: DetailSelection | null): void;
+    onExtractSelectedContainer(): void;
+    selectedFilePath: string;
     selectedPackageId: string;
     tableHeight: number;
   }) => (
@@ -65,6 +72,14 @@ vi.mock('./components/AnalysisTabs', () => ({
       data-testid="analysis-tabs"
       data-height={tableHeight}
     >
+      <button
+        data-extracting={isExtracting ? 'true' : 'false'}
+        data-selected-file-path={selectedFilePath}
+        type="button"
+        onClick={onExtractSelectedContainer}
+      >
+        Extract probe
+      </button>
       <button
         type="button"
         onClick={() => onDetailsSelectionChange({
@@ -107,7 +122,10 @@ function createMockState(overrides: Partial<AppState> = {}): AppState {
       backendSelectionRequestId: 0,
     },
     isAnalyzing: false,
+    isExtracting: false,
     isOpeningDirectory: false,
+    extractRequestId: 0,
+    extractSelectedContainer: mockHarness.actions.extractSelectedContainer,
     loadBackendInfo: mockHarness.actions.loadBackendInfo,
     openDirectory: mockHarness.actions.openDirectory,
     openBackendSelection: mockHarness.actions.openBackendSelection,
@@ -363,6 +381,23 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Backend' }));
 
     expect(mockHarness.actions.openBackendSelection).toHaveBeenCalledTimes(1);
+  });
+
+  test('passes selected container and extract action to analysis tabs', () => {
+    mockHarness.state = createMockState({
+      analysisResult: {
+        overview: { packageCount: 1 },
+        packages: [{ packagePath: '../../../Engine/Config/Base.ini', order: 0 }],
+      },
+      selectedFilePath: 'C:\\Paks\\A.pak',
+    });
+
+    render(<App />);
+
+    const probe = screen.getByRole('button', { name: 'Extract probe' });
+    expect(probe).toHaveAttribute('data-selected-file-path', 'C:\\Paks\\A.pak');
+    fireEvent.click(probe);
+    expect(mockHarness.actions.extractSelectedContainer).toHaveBeenCalledTimes(1);
   });
 
   test('passes measured region heights to virtualized regions', async () => {

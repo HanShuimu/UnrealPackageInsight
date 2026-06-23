@@ -1,4 +1,4 @@
-import { Empty, Segmented, Table, Tabs, Typography } from 'antd';
+import { Button, Empty, Segmented, Table, Tabs, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useCallback, useEffect, useMemo, useState, type RefCallback } from 'react';
 import type { AnalysisResult } from '../types/upi';
@@ -16,9 +16,12 @@ import { PackageTable } from './PackageTable';
 
 type AnalysisTabsProps = {
   result: AnalysisResult | null;
+  selectedFilePath: string;
+  isExtracting: boolean;
   selectedPackageId: string;
   tableHeight: number;
   onDetailsSelectionChange(selection: DetailSelection | null): void;
+  onExtractSelectedContainer(): void;
 };
 
 const TABLE_VERTICAL_CHROME_PX = 48;
@@ -118,20 +121,26 @@ function renderOverviewCards(cards: OverviewCard[]) {
 }
 
 type PackagePaneProps = {
+  canExtract: boolean;
   fallbackHeight: number;
+  isExtracting: boolean;
   mode: PackageMode;
   rows: PackageRow[];
   selectedPackageId: string;
   onModeChange(mode: PackageMode): void;
+  onExtractSelectedContainer(): void;
   onSelectPackage(row: PackageRow): void;
 };
 
 function PackagePane({
+  canExtract,
   fallbackHeight,
+  isExtracting,
   mode,
   rows,
   selectedPackageId,
   onModeChange,
+  onExtractSelectedContainer,
   onSelectPackage,
 }: PackagePaneProps) {
   const [contentRef, measuredHeight] = useMeasuredHeight<HTMLDivElement>();
@@ -146,6 +155,13 @@ function PackagePane({
           value={mode}
           onChange={onModeChange}
         />
+        <Button
+          disabled={!canExtract || isExtracting}
+          loading={isExtracting}
+          onClick={onExtractSelectedContainer}
+        >
+          Extract to...
+        </Button>
       </div>
       <div className="package-mode-content" ref={contentRef}>
         {mode === 'tree' ? (
@@ -213,9 +229,12 @@ function IssuesTable({
 
 export function AnalysisTabs({
   result,
+  selectedFilePath,
+  isExtracting,
   selectedPackageId,
   tableHeight,
   onDetailsSelectionChange,
+  onExtractSelectedContainer,
 }: AnalysisTabsProps) {
   const viewModel = useMemo(() => buildAnalysisViewModel(result), [result]);
   const [activeTab, setActiveTab] = useState<AnalysisTabId>('overview');
@@ -262,11 +281,14 @@ export function AnalysisTabs({
             label: tab.label,
             children: (
               <PackagePane
+                canExtract={Boolean(selectedFilePath && result && viewModel.packageRows.length > 0)}
                 fallbackHeight={tableHeight}
+                isExtracting={isExtracting}
                 mode={packageMode}
                 rows={viewModel.packageRows}
                 selectedPackageId={selectedPackageId}
                 onModeChange={handlePackageModeChange}
+                onExtractSelectedContainer={onExtractSelectedContainer}
                 onSelectPackage={handleSelectPackage}
               />
             ),

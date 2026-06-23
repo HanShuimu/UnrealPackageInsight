@@ -348,4 +348,54 @@ describe('appStore', () => {
     expect(store.getState().analysisResult?.overview).toEqual({ selected: 'newer' });
     expect(store.getState().statusText).toBe('Analysis ready');
   });
+
+  test('extractSelectedContainer reports cancel without changing the analysis result', async () => {
+    const store = createAppStore(
+      createClient({
+        extractSelectedContainer: async () => null,
+      }),
+    );
+    await store.getState().analyzeFile('C:\\Paks\\A.pak');
+    const before = store.getState().analysisResult;
+
+    await store.getState().extractSelectedContainer();
+
+    expect(store.getState().analysisResult).toBe(before);
+    expect(store.getState().statusText).toBe('Extract canceled');
+    expect(store.getState().isExtracting).toBe(false);
+  });
+
+  test('extractSelectedContainer keeps analysis data on success and reports completion', async () => {
+    const store = createAppStore(createClient());
+    await store.getState().analyzeFile('C:\\Paks\\A.pak');
+    const before = store.getState().analysisResult;
+
+    await store.getState().extractSelectedContainer();
+
+    expect(store.getState().analysisResult).toBe(before);
+    expect(store.getState().statusText).toBe('Extract complete');
+    expect(store.getState().isExtracting).toBe(false);
+  });
+
+  test('extractSelectedContainer converts extract failures into visible issue results', async () => {
+    const store = createAppStore(
+      createClient({
+        extractSelectedContainer: async () => ({
+          status: 'Error',
+          issues: [{ severity: 'error', code: 'extract.failed', message: 'Extraction failed.' }],
+          containerPath: 'C:\\Paks\\A.pak',
+          outputDirectory: 'D:\\Out',
+          extractedFileCount: 0,
+          errorCount: 1,
+        }),
+      }),
+    );
+    await store.getState().analyzeFile('C:\\Paks\\A.pak');
+
+    await store.getState().extractSelectedContainer();
+
+    expect(store.getState().statusText).toBe('Extract failed');
+    expect(store.getState().analysisResult?.issues?.[0]?.code).toBe('extract.failed');
+    expect(store.getState().isExtracting).toBe(false);
+  });
 });
