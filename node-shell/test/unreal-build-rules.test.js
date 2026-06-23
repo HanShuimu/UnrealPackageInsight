@@ -104,12 +104,16 @@ test('native Pak preflight registers runtime key before loading the index', () =
 
   const preflightSource = source.slice(preflightStart, preflightEnd);
   const trailerGuidIndex = preflightSource.indexOf('OutEncryptionKeyGuid = TrailerInfo.EncryptionKeyGuid;');
+  const noKeyGuidGuardIndex = preflightSource.indexOf('if (TrailerInfo.EncryptionKeyGuid.IsValid() && !bHasKey)');
   const registrationIndex = preflightSource.indexOf('UPI_RegisterPakRuntimeKey(TrailerInfo.EncryptionKeyGuid, ParsedKey);');
   const indexLoadIndex = preflightSource.indexOf('MakeRefCount<FPakFile>(&PlatformFile, *PakPath, false, true)');
 
   assert.notEqual(trailerGuidIndex, -1);
+  assert.notEqual(noKeyGuidGuardIndex, -1);
   assert.notEqual(registrationIndex, -1);
   assert.notEqual(indexLoadIndex, -1);
   assert.ok(trailerGuidIndex < registrationIndex);
+  assert.ok(trailerGuidIndex < noKeyGuidGuardIndex);
+  assert.ok(noKeyGuidGuardIndex < indexLoadIndex);
   assert.ok(registrationIndex < indexLoadIndex);
 });

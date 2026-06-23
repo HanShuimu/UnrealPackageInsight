@@ -301,6 +301,11 @@ namespace
 
 		const FPakInfo& TrailerInfo = TrailerOnlyPak->GetInfo();
 		OutEncryptionKeyGuid = TrailerInfo.EncryptionKeyGuid;
+		if (TrailerInfo.EncryptionKeyGuid.IsValid() && !bHasKey)
+		{
+			return false;
+		}
+
 		if (bHasKey)
 		{
 			UPI_RegisterPakRuntimeKey(TrailerInfo.EncryptionKeyGuid, ParsedKey);
