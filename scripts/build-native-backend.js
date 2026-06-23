@@ -16,6 +16,7 @@ const IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT = 13;
 const REQUIRED_GENERATED_PROTOCOL_HEADERS = [
   'upi_backend_info_generated.h',
   'upi_common_generated.h',
+  'upi_extract_response_generated.h',
   'upi_iostore_analysis_generated.h',
   'upi_pak_analysis_generated.h',
 ];

@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
 
 export { BackendInfoResponse } from './v1/backend-info-response.js';
+export { ExtractResponse } from './v1/extract-response.js';
 export { IoStoreAnalysisResponse } from './v1/io-store-analysis-response.js';
 export { IoStoreChunkEntry } from './v1/io-store-chunk-entry.js';
 export { IoStoreCompressedBlockEntry } from './v1/io-store-compressed-block-entry.js';

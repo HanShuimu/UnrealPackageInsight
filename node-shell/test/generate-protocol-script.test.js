@@ -195,6 +195,7 @@ test('buildFlatcCommands builds cpp and ts commands with common schema first', (
         path.join('protocol', 'upi_backend_info.fbs'),
         path.join('protocol', 'upi_pak_analysis.fbs'),
         path.join('protocol', 'upi_iostore_analysis.fbs'),
+        path.join('protocol', 'upi_extract_response.fbs'),
       ],
     },
     {
@@ -211,6 +212,7 @@ test('buildFlatcCommands builds cpp and ts commands with common schema first', (
         path.join('protocol', 'upi_backend_info.fbs'),
         path.join('protocol', 'upi_pak_analysis.fbs'),
         path.join('protocol', 'upi_iostore_analysis.fbs'),
+        path.join('protocol', 'upi_extract_response.fbs'),
       ],
     },
   ]);
@@ -245,6 +247,7 @@ test('setGeneratedTypescriptBarrel writes explicit barrel exports', () => {
       '/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */',
       '',
       "export { BackendInfoResponse } from './v1/backend-info-response.js';",
+      "export { ExtractResponse } from './v1/extract-response.js';",
       "export { IoStoreAnalysisResponse } from './v1/io-store-analysis-response.js';",
       "export { IoStoreChunkEntry } from './v1/io-store-chunk-entry.js';",
       "export { IoStoreCompressedBlockEntry } from './v1/io-store-compressed-block-entry.js';",

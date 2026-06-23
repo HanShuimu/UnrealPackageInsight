@@ -23,18 +23,21 @@ test('commits generated FlatBuffers C++ headers in the Unreal Program and Common
     path.join(programCppGeneratedRoot, 'upi_common_generated.h'),
     path.join(programCppGeneratedRoot, 'upi_pak_analysis_generated.h'),
     path.join(programCppGeneratedRoot, 'upi_iostore_analysis_generated.h'),
+    path.join(programCppGeneratedRoot, 'upi_extract_response_generated.h'),
   ];
   const expectedJsFiles = [
     path.join(generatedRoot, 'js', 'upi', 'v1.js'),
     path.join(generatedRoot, 'js', 'upi', 'v1', 'backend-info-response.js'),
     path.join(generatedRoot, 'js', 'upi', 'v1', 'pak-analysis-response.js'),
     path.join(generatedRoot, 'js', 'upi', 'v1', 'io-store-analysis-response.js'),
+    path.join(generatedRoot, 'js', 'upi', 'v1', 'extract-response.js'),
   ];
   const expectedTsFiles = [
     path.join(generatedRoot, 'ts', 'upi', 'v1.ts'),
     path.join(generatedRoot, 'ts', 'upi', 'v1', 'backend-info-response.ts'),
     path.join(generatedRoot, 'ts', 'upi', 'v1', 'pak-analysis-response.ts'),
     path.join(generatedRoot, 'ts', 'upi', 'v1', 'io-store-analysis-response.ts'),
+    path.join(generatedRoot, 'ts', 'upi', 'v1', 'extract-response.ts'),
   ];
 
   assert.equal(fs.existsSync(oldCppGeneratedRoot), false, `remove duplicate generated C++ path: ${oldCppGeneratedRoot}`);
@@ -61,6 +64,11 @@ test('generated CommonJS barrel exports all root response modules', () => {
       name: 'IoStoreAnalysisResponse',
       directModule: require('../generated/js/upi/v1/io-store-analysis-response.js'),
       lowerCamelAccessors: ['compressedBlocksLength'],
+    },
+    {
+      name: 'ExtractResponse',
+      directModule: require('../generated/js/upi/v1/extract-response.js'),
+      lowerCamelAccessors: ['outputDirectory', 'extractedFileCount'],
     },
   ];
 
