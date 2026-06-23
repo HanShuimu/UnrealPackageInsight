@@ -67,10 +67,21 @@ export type AnalysisResult = {
   [key: string]: unknown;
 };
 
+export type ExtractResult = {
+  schemaVersion?: number;
+  status?: IpcStatus;
+  issues?: Issue[];
+  containerPath?: string;
+  outputDirectory?: string;
+  extractedFileCount?: number;
+  errorCount?: number;
+};
+
 export type UpiClient = {
   getBackendInfo(): Promise<BackendInfo>;
   openPackageDirectory(): Promise<PackageScan | null>;
   analyze(filePath: string): Promise<AnalysisResult>;
+  extractSelectedContainer(filePath: string): Promise<ExtractResult | null>;
   submitAesKeyAndRetry(filePath: string, aesKey: string): Promise<AnalysisResult>;
   clearAesKey(): Promise<boolean>;
   chooseBackend(request: BackendSelectionRequest): Promise<string>;

@@ -232,6 +232,85 @@ test('analysis:analyze returns package.not_open before a package directory is op
   });
 });
 
+test('analysis:extractSelectedContainer returns package.not_open before a package directory is opened', async () => {
+  const state = createDesktopState();
+  const handlers = createIpcHandlers({ state });
+
+  const result = await handlers.extractSelectedContainer('C:\\Paks\\A.pak');
+
+  assert.deepEqual(result, {
+    status: 'Error',
+    issues: [{
+      severity: 'error',
+      code: 'package.not_open',
+      message: 'Open a package directory before extracting files.',
+    }],
+  });
+});
+
+test('analysis:extractSelectedContainer returns null when output directory selection is canceled', async () => {
+  const state = createDesktopState();
+  state.analysisService = {
+    async extract() {
+      throw new Error('extract should not run');
+    },
+  };
+  const handlers = createIpcHandlers({
+    state,
+    dialog: {
+      async showOpenDialog() {
+        return { canceled: true, filePaths: [] };
+      },
+    },
+  });
+
+  const result = await handlers.extractSelectedContainer('C:\\Paks\\A.pak');
+
+  assert.equal(result, null);
+});
+
+test('analysis:extractSelectedContainer chooses a directory and calls analysis service extract', async () => {
+  const calls = [];
+  const state = createDesktopState();
+  state.analysisService = {
+    async extract(filePath, outputDirectory) {
+      calls.push({ filePath, outputDirectory });
+      return {
+        status: 'OK',
+        issues: [],
+        containerPath: filePath,
+        outputDirectory,
+        extractedFileCount: 0,
+        errorCount: 0,
+      };
+    },
+  };
+  const handlers = createIpcHandlers({
+    state,
+    dialog: {
+      async showOpenDialog(options) {
+        assert.deepEqual(options, {
+          properties: ['openDirectory', 'createDirectory'],
+          title: 'Extract to...',
+        });
+        return { canceled: false, filePaths: ['D:\\Extracted'] };
+      },
+    },
+  });
+
+  const result = await handlers.extractSelectedContainer('C:\\Paks\\A.pak');
+
+  assert.deepEqual(calls, [{ filePath: 'C:\\Paks\\A.pak', outputDirectory: 'D:\\Extracted' }]);
+  assert.deepEqual(result, {
+    status: 'OK',
+    issues: [],
+    containerPath: 'C:\\Paks\\A.pak',
+    outputDirectory: 'D:\\Extracted',
+    extractedFileCount: 0,
+    errorCount: 0,
+  });
+});
+
 test('package:openDirectory scans the selected directory and creates analysis service', async () => {
   const backendClientProvider = { resolveForFile() {} };
   const state = createDesktopState({ backendClientProvider });

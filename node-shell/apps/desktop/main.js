@@ -35,6 +35,15 @@ const PACKAGE_NOT_OPEN_RESPONSE = {
   }],
 };
 
+const PACKAGE_NOT_OPEN_EXTRACT_RESPONSE = {
+  status: 'Error',
+  issues: [{
+    severity: 'error',
+    code: 'package.not_open',
+    message: 'Open a package directory before extracting files.',
+  }],
+};
+
 function createValidationErrorResponse(error) {
   return {
     status: 'Error',
@@ -159,6 +168,23 @@ function createIpcHandlers({
       return result;
     },
 
+    async extractSelectedContainer(filePath) {
+      if (!state.analysisService) {
+        return cloneResponse(PACKAGE_NOT_OPEN_EXTRACT_RESPONSE);
+      }
+
+      const selection = await dialogModule.showOpenDialog({
+        properties: ['openDirectory', 'createDirectory'],
+        title: 'Extract to...',
+      });
+
+      if (selection.canceled || selection.filePaths.length === 0) {
+        return null;
+      }
+
+      return state.analysisService.extract(filePath, selection.filePaths[0]);
+    },
+
     async submitAesKeyAndRetry(filePath, aesKey) {
       if (!state.analysisService) {
         return cloneResponse(PACKAGE_NOT_OPEN_RESPONSE);
@@ -230,6 +256,9 @@ function registerIpcHandlers(ipcMainModule, handlers) {
   ipcMainModule.handle('backend:getInfo', () => handlers.getBackendInfo());
   ipcMainModule.handle('package:openDirectory', () => handlers.openPackageDirectory());
   ipcMainModule.handle('analysis:analyze', (_event, filePath) => handlers.analyze(filePath));
+  ipcMainModule.handle('analysis:extractSelectedContainer', (_event, filePath) => (
+    handlers.extractSelectedContainer(filePath)
+  ));
   ipcMainModule.handle('analysis:submitAesKeyAndRetry', (_event, filePath, aesKey) => (
     handlers.submitAesKeyAndRetry(filePath, aesKey)
   ));

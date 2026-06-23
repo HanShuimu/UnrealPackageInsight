@@ -59,6 +59,13 @@ function createClient(overrides: Partial<UpiClient> = {}): UpiClient {
       },
     }),
     analyze: async (filePath) => ({ status: 'OK', overview: { filePath }, packages: [], compressedBlocks: [] }),
+    extractSelectedContainer: async (filePath) => ({
+      status: 'OK',
+      containerPath: filePath,
+      outputDirectory: 'C:\\Extracted',
+      extractedFileCount: 0,
+      errorCount: 0,
+    }),
     submitAesKeyAndRetry: async () => ({ status: 'OK', packages: [], compressedBlocks: [] }),
     clearAesKey: async () => true,
     chooseBackend: async (request) => request.selectedId || '',
