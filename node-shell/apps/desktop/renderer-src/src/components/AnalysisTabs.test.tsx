@@ -516,6 +516,22 @@ describe('AnalysisTabs', () => {
     expect(onExtractSelectedContainer).toHaveBeenCalledTimes(1);
   });
 
+  test('Packages tab groups export and extract actions together on the right side', () => {
+    renderTabs(analysisResult());
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Packages' }));
+
+    const actionGroup = screen.getByTestId('package-actions');
+    expect(actionGroup).toHaveClass('package-actions');
+    expect(actionGroup).toHaveStyle({
+      display: 'flex',
+      gap: '8px',
+      marginLeft: 'auto',
+    });
+    expect(actionGroup).toContainElement(screen.getByRole('button', { name: 'Export CSV...' }));
+    expect(actionGroup).toContainElement(screen.getByRole('button', { name: 'Extract to...' }));
+  });
+
   test('Extract to button is disabled without a selected file or analysis result', () => {
     const { rerender } = renderTabs(null);
 
@@ -690,6 +706,33 @@ describe('AnalysisTabs', () => {
       expect.any(Array),
       { columnKey: 'size', order: 'descend' },
     );
+  });
+
+  test('PackageTable sort state resets to the default when result changes', () => {
+    const { rerender } = renderTabs(analysisResult(fooPath));
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Packages' }));
+    act(() => {
+      harness.packageTableProps.at(-1)?.onSortChange({ columnKey: 'size', order: 'descend' });
+    });
+    expect(harness.packageTableProps.at(-1)?.sortState).toEqual({ columnKey: 'size', order: 'descend' });
+
+    rerender(
+      <AnalysisTabs
+        result={analysisResult(barPath)}
+        selectedFilePath="C:\\Paks\\A.pak"
+        isExtracting={false}
+        isExportingPackagesCsv={false}
+        selectedPackageId=""
+        tableHeight={500}
+        onDetailsSelectionChange={() => {}}
+        onExtractSelectedContainer={() => {}}
+        onExportPackagesCsv={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Packages' }));
+
+    expect(harness.packageTableProps.at(-1)?.sortState).toEqual(PACKAGE_TABLE_DEFAULT_SORT);
   });
 
   test('issues render only severity, code, and message table fields', () => {

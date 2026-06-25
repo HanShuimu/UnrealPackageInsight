@@ -1,6 +1,6 @@
 import { Button, Empty, Segmented, Table, Tabs, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { useCallback, useEffect, useMemo, useState, type RefCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type RefCallback } from 'react';
 import type { AnalysisResult } from '../types/upi';
 import {
   PACKAGE_TABLE_DEFAULT_SORT,
@@ -36,6 +36,12 @@ const PACKAGE_MODE_OPTIONS: Array<{ label: string; value: PackageMode }> = [
   { label: 'Table', value: 'table' },
   { label: 'Tree', value: 'tree' },
 ];
+
+const PACKAGE_ACTIONS_STYLE: CSSProperties = {
+  display: 'flex',
+  gap: 8,
+  marginLeft: 'auto',
+};
 
 const ISSUE_COLUMNS: ColumnsType<IssueRow> = [
   {
@@ -175,20 +181,22 @@ function PackagePane({
           value={mode}
           onChange={onModeChange}
         />
-        <Button
-          disabled={!canExport}
-          loading={isExportingPackagesCsv}
-          onClick={handleExportPackagesCsv}
-        >
-          Export CSV...
-        </Button>
-        <Button
-          disabled={!canExtract || isExtracting}
-          loading={isExtracting}
-          onClick={onExtractSelectedContainer}
-        >
-          Extract to...
-        </Button>
+        <div className="package-actions" data-testid="package-actions" style={PACKAGE_ACTIONS_STYLE}>
+          <Button
+            disabled={!canExport}
+            loading={isExportingPackagesCsv}
+            onClick={handleExportPackagesCsv}
+          >
+            Export CSV...
+          </Button>
+          <Button
+            disabled={!canExtract || isExtracting}
+            loading={isExtracting}
+            onClick={onExtractSelectedContainer}
+          >
+            Extract to...
+          </Button>
+        </div>
       </div>
       <div className="package-mode-content" ref={contentRef}>
         {mode === 'tree' ? (
