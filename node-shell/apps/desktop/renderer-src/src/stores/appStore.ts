@@ -1,4 +1,10 @@
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import {
+  serializePackagesCsv,
+  sortPackageRows,
+  type PackageRow,
+  type PackageTableSortState,
+} from '../../../../../packages/analysis-domain/src/packages-table-export.js';
 import type {
   AnalysisResult,
   BackendInfo,
@@ -11,11 +17,18 @@ import type {
 
 const DEFAULT_AES_MESSAGE = 'Enter the key for this container and analyze again.';
 
+export type PackagesCsvExportDialog = {
+  kind: 'success' | 'error';
+  title: string;
+  message: string;
+};
+
 export type DialogState = {
   aesFilePath: string;
   aesMessage: string;
   backendSelection: BackendSelectionRequest | null;
   backendSelectionRequestId: number;
+  packagesCsvExport?: PackagesCsvExportDialog | null;
 };
 
 export type AppState = {
@@ -27,16 +40,20 @@ export type AppState = {
   isOpeningDirectory: boolean;
   isAnalyzing: boolean;
   isExtracting: boolean;
+  isExportingPackagesCsv?: boolean;
   analysisRequestId: number;
   extractRequestId: number;
+  packagesCsvExportRequestId?: number;
   openDirectoryRequestId: number;
   dialog: DialogState;
   loadBackendInfo(): Promise<void>;
   openDirectory(): Promise<void>;
   analyzeFile(filePath: string): Promise<void>;
   extractSelectedContainer(): Promise<void>;
+  exportPackagesCsv?(rows: PackageRow[], sortState: PackageTableSortState): Promise<void>;
   submitAesKey(aesKey: string): Promise<void>;
   cancelAesDialog(): void;
+  dismissPackagesCsvExportDialog?(): void;
   openBackendSelection(): Promise<void>;
   chooseBackend(selectedId: string): Promise<void>;
   cancelBackendDialog(): void;
@@ -48,6 +65,7 @@ function createDialogState(overrides: Partial<DialogState> = {}): DialogState {
     aesMessage: DEFAULT_AES_MESSAGE,
     backendSelection: null,
     backendSelectionRequestId: 0,
+    packagesCsvExport: null,
     ...overrides,
   };
 }
@@ -142,6 +160,17 @@ function isCurrentExtract(
     && state.analysisRequestId === analysisRequestId;
 }
 
+function isCurrentPackagesCsvExport(
+  state: AppState,
+  filePath: string,
+  requestId: number,
+  analysisRequestId: number,
+): boolean {
+  return state.selectedFilePath === filePath
+    && state.packagesCsvExportRequestId === requestId
+    && state.analysisRequestId === analysisRequestId;
+}
+
 function isCurrentOpenDirectory(state: AppState, requestId: number): boolean {
   return state.openDirectoryRequestId === requestId;
 }
@@ -191,8 +220,10 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
     isOpeningDirectory: false,
     isAnalyzing: false,
     isExtracting: false,
+    isExportingPackagesCsv: false,
     analysisRequestId: 0,
     extractRequestId: 0,
+    packagesCsvExportRequestId: 0,
     openDirectoryRequestId: 0,
     dialog: createDialogState(),
 
@@ -215,10 +246,16 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
       const requestId = get().openDirectoryRequestId + 1;
       set((state) => ({
         extractRequestId: state.extractRequestId + 1,
+        packagesCsvExportRequestId: (state.packagesCsvExportRequestId ?? 0) + 1,
         isExtracting: false,
+        isExportingPackagesCsv: false,
         openDirectoryRequestId: requestId,
         isOpeningDirectory: true,
         statusText: 'Opening...',
+        dialog: {
+          ...state.dialog,
+          packagesCsvExport: null,
+        },
       }));
       try {
         const scan = await client.openPackageDirectory();
@@ -238,8 +275,10 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
           dialog: createDialogState(),
           analysisRequestId: state.analysisRequestId + 1,
           extractRequestId: state.extractRequestId + 1,
+          packagesCsvExportRequestId: (state.packagesCsvExportRequestId ?? 0) + 1,
           isAnalyzing: false,
           isExtracting: false,
+          isExportingPackagesCsv: false,
           statusText: formatScanStatus(scan),
         }));
       } catch (error) {
@@ -266,14 +305,17 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
         statusText: 'Analyzing...',
         isAnalyzing: true,
         isExtracting: false,
+        isExportingPackagesCsv: false,
         analysisRequestId: requestId,
         extractRequestId: state.extractRequestId + 1,
+        packagesCsvExportRequestId: (state.packagesCsvExportRequestId ?? 0) + 1,
         dialog: {
           ...state.dialog,
           aesFilePath: '',
           aesMessage: DEFAULT_AES_MESSAGE,
           backendSelection: null,
           backendSelectionRequestId: 0,
+          packagesCsvExport: null,
         },
       }));
 
@@ -379,6 +421,103 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
       }
     },
 
+    async exportPackagesCsv(rows: PackageRow[], sortState: PackageTableSortState) {
+      const filePath = get().selectedFilePath;
+      if (!filePath) {
+        set((state) => ({
+          statusText: 'CSV export failed',
+          dialog: {
+            ...state.dialog,
+            packagesCsvExport: {
+              kind: 'error',
+              title: 'CSV export failed',
+              message: 'Select a container first.',
+            },
+          },
+        }));
+        return;
+      }
+
+      if (rows.length === 0) {
+        set((state) => ({
+          statusText: 'CSV export failed',
+          dialog: {
+            ...state.dialog,
+            packagesCsvExport: {
+              kind: 'error',
+              title: 'CSV export failed',
+              message: 'No packages to export.',
+            },
+          },
+        }));
+        return;
+      }
+
+      const requestId = (get().packagesCsvExportRequestId ?? 0) + 1;
+      const analysisRequestId = get().analysisRequestId;
+      set((state) => ({
+        packagesCsvExportRequestId: requestId,
+        isExportingPackagesCsv: true,
+        statusText: 'Exporting CSV...',
+        dialog: {
+          ...state.dialog,
+          packagesCsvExport: null,
+        },
+      }));
+
+      try {
+        const savePath = await client.choosePackagesCsvSavePath(filePath);
+        if (!isCurrentPackagesCsvExport(get(), filePath, requestId, analysisRequestId)) {
+          return;
+        }
+
+        if (!savePath) {
+          set({ statusText: 'CSV export canceled' });
+          return;
+        }
+
+        const sortedRows = sortPackageRows(rows, sortState);
+        const csvText = serializePackagesCsv(sortedRows);
+        const result = await client.writePackagesCsv(savePath.filePath, csvText);
+        if (!isCurrentPackagesCsvExport(get(), filePath, requestId, analysisRequestId)) {
+          return;
+        }
+
+        const countLabel = sortedRows.length === 1 ? '1 package exported.' : `${sortedRows.length} packages exported.`;
+        set((state) => ({
+          statusText: 'CSV exported',
+          dialog: {
+            ...state.dialog,
+            packagesCsvExport: {
+              kind: 'success',
+              title: 'CSV exported',
+              message: `${result.filePath}\n${countLabel}`,
+            },
+          },
+        }));
+      } catch (error) {
+        if (!isCurrentPackagesCsvExport(get(), filePath, requestId, analysisRequestId)) {
+          return;
+        }
+
+        set((state) => ({
+          statusText: 'CSV export failed',
+          dialog: {
+            ...state.dialog,
+            packagesCsvExport: {
+              kind: 'error',
+              title: 'CSV export failed',
+              message: getErrorMessage(error),
+            },
+          },
+        }));
+      } finally {
+        if (isCurrentPackagesCsvExport(get(), filePath, requestId, analysisRequestId)) {
+          set({ isExportingPackagesCsv: false });
+        }
+      }
+    },
+
     async submitAesKey(aesKey: string) {
       const filePath = get().dialog.aesFilePath;
       if (!filePath) {
@@ -443,6 +582,15 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
           ...state.dialog,
           aesFilePath: '',
           aesMessage: DEFAULT_AES_MESSAGE,
+        },
+      }));
+    },
+
+    dismissPackagesCsvExportDialog() {
+      set((state) => ({
+        dialog: {
+          ...state.dialog,
+          packagesCsvExport: null,
         },
       }));
     },
