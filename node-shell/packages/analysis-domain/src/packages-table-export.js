@@ -89,19 +89,20 @@ function comparePackageFileName(left, right) {
 }
 
 function compareNumericField(field) {
-  return (left, right) => {
+  return (left, right, order = 'ascend') => {
     const leftValue = left[field];
     const rightValue = right[field];
     const leftHasValue = leftValue !== undefined && Number.isFinite(leftValue);
     const rightHasValue = rightValue !== undefined && Number.isFinite(rightValue);
+    const direction = order === 'descend' ? -1 : 1;
 
     if (leftHasValue && rightHasValue && leftValue !== rightValue) {
-      return leftValue - rightValue;
+      return (leftValue - rightValue) * direction;
     }
     if (leftHasValue !== rightHasValue) {
       return leftHasValue ? -1 : 1;
     }
-    return comparePackageFileName(left, right);
+    return comparePackageFileName(left, right) * direction;
   };
 }
 
@@ -169,23 +170,6 @@ const PACKAGE_TABLE_DEFAULT_SORT = Object.freeze({
   order: 'ascend',
 });
 
-function compareSortedNumericField(field, direction) {
-  return (left, right) => {
-    const leftValue = left[field];
-    const rightValue = right[field];
-    const leftHasValue = leftValue !== undefined && Number.isFinite(leftValue);
-    const rightHasValue = rightValue !== undefined && Number.isFinite(rightValue);
-
-    if (leftHasValue !== rightHasValue) {
-      return leftHasValue ? -1 : 1;
-    }
-    if (leftHasValue && rightHasValue && leftValue !== rightValue) {
-      return (leftValue - rightValue) * direction;
-    }
-    return comparePackageFileName(left, right) * direction;
-  };
-}
-
 function buildPackageRows(result) {
   const packages = Array.isArray(result?.packages) ? result.packages : [];
   const duplicateCounts = new Map();
@@ -242,11 +226,11 @@ function buildPackageRows(result) {
 function sortPackageRows(rows, sortState = PACKAGE_TABLE_DEFAULT_SORT) {
   const effectiveSort = sortState || PACKAGE_TABLE_DEFAULT_SORT;
   const column = PACKAGE_TABLE_COLUMNS.find((candidate) => candidate.key === effectiveSort.columnKey);
-  const direction = effectiveSort.order === 'descend' ? -1 : 1;
-  if (column?.compare && column.key !== 'fullPath') {
-    return [...rows].sort(compareSortedNumericField(column.key, direction));
+  if (column?.compare) {
+    return [...rows].sort((left, right) => column.compare(left, right, effectiveSort.order));
   }
 
+  const direction = effectiveSort.order === 'descend' ? -1 : 1;
   const compare = column?.compare || comparePackageFileName;
   return [...rows].sort((left, right) => compare(left, right) * direction);
 }
