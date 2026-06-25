@@ -3,7 +3,7 @@ function isRecord(value) {
 }
 
 function toFiniteNumber(value) {
-  if (typeof value === 'number' && Number.isFinite(value)) {
+  if (typeof value === 'number' && Number.isSafeInteger(value)) {
     return value;
   }
   if (typeof value === 'bigint') {
@@ -11,8 +11,12 @@ function toFiniteNumber(value) {
     return Number.isSafeInteger(numberValue) ? numberValue : undefined;
   }
   if (typeof value === 'string' && value.trim() !== '') {
-    const numberValue = Number(value);
-    return Number.isFinite(numberValue) ? numberValue : undefined;
+    const trimmedValue = value.trim();
+    if (!/^[+-]?\d+$/.test(trimmedValue)) {
+      return undefined;
+    }
+    const numberValue = Number(BigInt(trimmedValue));
+    return Number.isSafeInteger(numberValue) ? numberValue : undefined;
   }
   return undefined;
 }

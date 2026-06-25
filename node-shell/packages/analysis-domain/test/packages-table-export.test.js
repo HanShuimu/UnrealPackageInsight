@@ -118,6 +118,48 @@ test('buildPackageRows treats unsafe bigint numeric values as unavailable', () =
   );
 });
 
+test('buildPackageRows treats unsafe and non-integer numeric strings as unavailable', () => {
+  const rows = buildPackageRows({
+    packages: [
+      {
+        packagePath: '../../../Game/UnsafeString.uasset',
+        size: '9007199254740993',
+        compressedSize: '9007199254740992',
+        physicalOrder: '12.5',
+      },
+    ],
+  });
+
+  assert.equal(rows[0].size, undefined);
+  assert.equal(rows[0].compressedSize, undefined);
+  assert.equal(rows[0].physicalOrder, undefined);
+  assert.equal(
+    serializePackagesCsv(rows),
+    '\ufeffFull Path,Size,Compressed,Order\r\n../../../Game/UnsafeString.uasset,,,\r\n',
+  );
+});
+
+test('buildPackageRows treats unsafe and non-integer numeric numbers as unavailable', () => {
+  const rows = buildPackageRows({
+    packages: [
+      {
+        packagePath: '../../../Game/UnsafeNumber.uasset',
+        size: Number.MAX_SAFE_INTEGER + 1,
+        compressedSize: 42.5,
+        physicalOrder: Number.MIN_SAFE_INTEGER - 1,
+      },
+    ],
+  });
+
+  assert.equal(rows[0].size, undefined);
+  assert.equal(rows[0].compressedSize, undefined);
+  assert.equal(rows[0].physicalOrder, undefined);
+  assert.equal(
+    serializePackagesCsv(rows),
+    '\ufeffFull Path,Size,Compressed,Order\r\n../../../Game/UnsafeNumber.uasset,,,\r\n',
+  );
+});
+
 test('PACKAGE_TABLE_COLUMNS defines the Packages table and raw CSV values', () => {
   assert.deepEqual(PACKAGE_TABLE_COLUMNS.map(({ key, dataIndex, title, width }) => ({
     key,
