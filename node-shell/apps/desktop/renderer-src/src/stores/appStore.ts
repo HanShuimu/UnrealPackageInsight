@@ -28,7 +28,7 @@ export type DialogState = {
   aesMessage: string;
   backendSelection: BackendSelectionRequest | null;
   backendSelectionRequestId: number;
-  packagesCsvExport?: PackagesCsvExportDialog | null;
+  packagesCsvExport: PackagesCsvExportDialog | null;
 };
 
 export type AppState = {
@@ -40,20 +40,20 @@ export type AppState = {
   isOpeningDirectory: boolean;
   isAnalyzing: boolean;
   isExtracting: boolean;
-  isExportingPackagesCsv?: boolean;
+  isExportingPackagesCsv: boolean;
   analysisRequestId: number;
   extractRequestId: number;
-  packagesCsvExportRequestId?: number;
+  packagesCsvExportRequestId: number;
   openDirectoryRequestId: number;
   dialog: DialogState;
   loadBackendInfo(): Promise<void>;
   openDirectory(): Promise<void>;
   analyzeFile(filePath: string): Promise<void>;
   extractSelectedContainer(): Promise<void>;
-  exportPackagesCsv?(rows: PackageRow[], sortState: PackageTableSortState): Promise<void>;
+  exportPackagesCsv(rows: PackageRow[], sortState: PackageTableSortState): Promise<void>;
   submitAesKey(aesKey: string): Promise<void>;
   cancelAesDialog(): void;
-  dismissPackagesCsvExportDialog?(): void;
+  dismissPackagesCsvExportDialog(): void;
   openBackendSelection(): Promise<void>;
   chooseBackend(selectedId: string): Promise<void>;
   cancelBackendDialog(): void;
@@ -246,7 +246,7 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
       const requestId = get().openDirectoryRequestId + 1;
       set((state) => ({
         extractRequestId: state.extractRequestId + 1,
-        packagesCsvExportRequestId: (state.packagesCsvExportRequestId ?? 0) + 1,
+        packagesCsvExportRequestId: state.packagesCsvExportRequestId + 1,
         isExtracting: false,
         isExportingPackagesCsv: false,
         openDirectoryRequestId: requestId,
@@ -275,7 +275,7 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
           dialog: createDialogState(),
           analysisRequestId: state.analysisRequestId + 1,
           extractRequestId: state.extractRequestId + 1,
-          packagesCsvExportRequestId: (state.packagesCsvExportRequestId ?? 0) + 1,
+          packagesCsvExportRequestId: state.packagesCsvExportRequestId + 1,
           isAnalyzing: false,
           isExtracting: false,
           isExportingPackagesCsv: false,
@@ -308,7 +308,7 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
         isExportingPackagesCsv: false,
         analysisRequestId: requestId,
         extractRequestId: state.extractRequestId + 1,
-        packagesCsvExportRequestId: (state.packagesCsvExportRequestId ?? 0) + 1,
+        packagesCsvExportRequestId: state.packagesCsvExportRequestId + 1,
         dialog: {
           ...state.dialog,
           aesFilePath: '',
@@ -453,7 +453,7 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
         return;
       }
 
-      const requestId = (get().packagesCsvExportRequestId ?? 0) + 1;
+      const requestId = get().packagesCsvExportRequestId + 1;
       const analysisRequestId = get().analysisRequestId;
       set((state) => ({
         packagesCsvExportRequestId: requestId,
