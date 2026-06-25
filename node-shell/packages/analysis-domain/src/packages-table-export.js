@@ -8,7 +8,7 @@ function toFiniteNumber(value) {
   }
   if (typeof value === 'bigint') {
     const numberValue = Number(value);
-    return Number.isFinite(numberValue) ? numberValue : undefined;
+    return Number.isSafeInteger(numberValue) ? numberValue : undefined;
   }
   if (typeof value === 'string' && value.trim() !== '') {
     const numberValue = Number(value);
@@ -69,7 +69,7 @@ function typeFromFileName(fileName) {
 }
 
 function compareText(left, right) {
-  return String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: 'base' });
+  return String(left).localeCompare(String(right), 'en', { numeric: true, sensitivity: 'base' });
 }
 
 function comparePackagePath(left, right) {
@@ -103,6 +103,25 @@ function compareNumericField(field) {
 
 function comparePackageOrder(left, right) {
   return compareNumericField('physicalOrder')(left, right);
+}
+
+function allocatePackageId(row, duplicateCounts, usedIds, reservedIds) {
+  const duplicateCount = (duplicateCounts.get(row.fullPath) || 0) + 1;
+  duplicateCounts.set(row.fullPath, duplicateCount);
+
+  if (duplicateCount === 1 && !usedIds.has(row.fullPath)) {
+    usedIds.add(row.fullPath);
+    return row.fullPath;
+  }
+
+  let suffix = duplicateCount;
+  let candidate = `${row.fullPath}#${suffix}`;
+  while (usedIds.has(candidate) || reservedIds.has(candidate)) {
+    suffix += 1;
+    candidate = `${row.fullPath}#${suffix}`;
+  }
+  usedIds.add(candidate);
+  return candidate;
 }
 
 const PACKAGE_TABLE_COLUMNS = Object.freeze([
@@ -146,9 +165,27 @@ const PACKAGE_TABLE_DEFAULT_SORT = Object.freeze({
   order: 'ascend',
 });
 
+function compareSortedNumericField(field, direction) {
+  return (left, right) => {
+    const leftValue = left[field];
+    const rightValue = right[field];
+    const leftHasValue = leftValue !== undefined && Number.isFinite(leftValue);
+    const rightHasValue = rightValue !== undefined && Number.isFinite(rightValue);
+
+    if (leftHasValue !== rightHasValue) {
+      return leftHasValue ? -1 : 1;
+    }
+    if (leftHasValue && rightHasValue && leftValue !== rightValue) {
+      return (leftValue - rightValue) * direction;
+    }
+    return comparePackageFileName(left, right) * direction;
+  };
+}
+
 function buildPackageRows(result) {
   const packages = Array.isArray(result?.packages) ? result.packages : [];
   const duplicateCounts = new Map();
+  const usedIds = new Set();
   const rows = packages.reduce((draftRows, packageEntry) => {
     if (!isRecord(packageEntry)) {
       return draftRows;
@@ -188,23 +225,25 @@ function buildPackageRows(result) {
     return draftRows;
   }, []);
 
+  const reservedIds = new Set(rows.map((row) => row.fullPath));
+
   return rows
     .sort(comparePackagePath)
-    .map((row) => {
-      const duplicateCount = (duplicateCounts.get(row.fullPath) || 0) + 1;
-      duplicateCounts.set(row.fullPath, duplicateCount);
-      return {
-        id: duplicateCount === 1 ? row.fullPath : `${row.fullPath}#${duplicateCount}`,
-        ...row,
-      };
-    });
+    .map((row) => ({
+      id: allocatePackageId(row, duplicateCounts, usedIds, reservedIds),
+      ...row,
+    }));
 }
 
 function sortPackageRows(rows, sortState = PACKAGE_TABLE_DEFAULT_SORT) {
   const effectiveSort = sortState || PACKAGE_TABLE_DEFAULT_SORT;
   const column = PACKAGE_TABLE_COLUMNS.find((candidate) => candidate.key === effectiveSort.columnKey);
-  const compare = column?.compare || comparePackageFileName;
   const direction = effectiveSort.order === 'descend' ? -1 : 1;
+  if (column?.compare && column.key !== 'fullPath') {
+    return [...rows].sort(compareSortedNumericField(column.key, direction));
+  }
+
+  const compare = column?.compare || comparePackageFileName;
   return [...rows].sort((left, right) => compare(left, right) * direction);
 }
 
