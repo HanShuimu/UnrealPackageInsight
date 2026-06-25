@@ -3,6 +3,10 @@ import type { ColumnsType } from 'antd/es/table';
 import { useCallback, useEffect, useMemo, useState, type RefCallback } from 'react';
 import type { AnalysisResult } from '../types/upi';
 import {
+  PACKAGE_TABLE_DEFAULT_SORT,
+  type PackageTableSortState,
+} from '../../../../../packages/analysis-domain/src/packages-table-export.js';
+import {
   buildAnalysisViewModel,
   type AnalysisTabId,
   type DetailSelection,
@@ -18,10 +22,12 @@ type AnalysisTabsProps = {
   result: AnalysisResult | null;
   selectedFilePath: string;
   isExtracting: boolean;
+  isExportingPackagesCsv?: boolean;
   selectedPackageId: string;
   tableHeight: number;
   onDetailsSelectionChange(selection: DetailSelection | null): void;
   onExtractSelectedContainer(): void;
+  onExportPackagesCsv?(rows: PackageRow[], sortState: PackageTableSortState): void;
 };
 
 const TABLE_VERTICAL_CHROME_PX = 48;
@@ -122,30 +128,44 @@ function renderOverviewCards(cards: OverviewCard[]) {
 
 type PackagePaneProps = {
   canExtract: boolean;
+  canExportPackagesCsv: boolean;
   fallbackHeight: number;
   isExtracting: boolean;
+  isExportingPackagesCsv: boolean;
   mode: PackageMode;
   rows: PackageRow[];
   selectedPackageId: string;
+  sortState: PackageTableSortState;
   onModeChange(mode: PackageMode): void;
   onExtractSelectedContainer(): void;
+  onExportPackagesCsv(rows: PackageRow[], sortState: PackageTableSortState): void;
   onSelectPackage(row: PackageRow): void;
+  onSortChange(sortState: PackageTableSortState): void;
 };
 
 function PackagePane({
   canExtract,
+  canExportPackagesCsv,
   fallbackHeight,
   isExtracting,
+  isExportingPackagesCsv,
   mode,
   rows,
   selectedPackageId,
+  sortState,
   onModeChange,
   onExtractSelectedContainer,
+  onExportPackagesCsv,
   onSelectPackage,
+  onSortChange,
 }: PackagePaneProps) {
   const [contentRef, measuredHeight] = useMeasuredHeight<HTMLDivElement>();
   const availableHeight = measuredHeight || fallbackHeight;
   const packageHeight = tableBodyHeight(availableHeight);
+  const canExport = mode === 'table' && canExportPackagesCsv && !isExportingPackagesCsv;
+  const handleExportPackagesCsv = useCallback(() => {
+    onExportPackagesCsv(rows, sortState);
+  }, [onExportPackagesCsv, rows, sortState]);
 
   return (
     <div className="analysis-table-pane package-pane">
@@ -155,6 +175,13 @@ function PackagePane({
           value={mode}
           onChange={onModeChange}
         />
+        <Button
+          disabled={!canExport}
+          loading={isExportingPackagesCsv}
+          onClick={handleExportPackagesCsv}
+        >
+          Export CSV...
+        </Button>
         <Button
           disabled={!canExtract || isExtracting}
           loading={isExtracting}
@@ -175,7 +202,9 @@ function PackagePane({
           <PackageTable
             height={packageHeight}
             rows={rows}
+            sortState={sortState}
             onSelectPackage={onSelectPackage}
+            onSortChange={onSortChange}
           />
         )}
       </div>
@@ -231,18 +260,22 @@ export function AnalysisTabs({
   result,
   selectedFilePath,
   isExtracting,
+  isExportingPackagesCsv = false,
   selectedPackageId,
   tableHeight,
   onDetailsSelectionChange,
   onExtractSelectedContainer,
+  onExportPackagesCsv = () => {},
 }: AnalysisTabsProps) {
   const viewModel = useMemo(() => buildAnalysisViewModel(result), [result]);
   const [activeTab, setActiveTab] = useState<AnalysisTabId>('overview');
   const [packageMode, setPackageMode] = useState<PackageMode>('table');
+  const [packageSortState, setPackageSortState] = useState<PackageTableSortState>(PACKAGE_TABLE_DEFAULT_SORT);
 
   useEffect(() => {
     setActiveTab('overview');
     setPackageMode('table');
+    setPackageSortState(PACKAGE_TABLE_DEFAULT_SORT);
     onDetailsSelectionChange(null);
   }, [result, onDetailsSelectionChange]);
 
@@ -282,14 +315,19 @@ export function AnalysisTabs({
             children: (
               <PackagePane
                 canExtract={Boolean(selectedFilePath && result && viewModel.packageRows.length > 0)}
+                canExportPackagesCsv={Boolean(selectedFilePath && result && viewModel.packageRows.length > 0)}
                 fallbackHeight={tableHeight}
                 isExtracting={isExtracting}
+                isExportingPackagesCsv={isExportingPackagesCsv}
                 mode={packageMode}
                 rows={viewModel.packageRows}
                 selectedPackageId={selectedPackageId}
+                sortState={packageSortState}
                 onModeChange={handlePackageModeChange}
                 onExtractSelectedContainer={onExtractSelectedContainer}
+                onExportPackagesCsv={onExportPackagesCsv}
                 onSelectPackage={handleSelectPackage}
+                onSortChange={setPackageSortState}
               />
             ),
           };
