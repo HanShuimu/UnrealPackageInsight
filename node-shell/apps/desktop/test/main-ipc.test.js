@@ -5,6 +5,7 @@ const {
   createWindow,
   createDesktopState,
   createIpcHandlers,
+  registerIpcHandlers,
   startDesktopApp,
 } = require('../main.js');
 
@@ -311,6 +312,108 @@ test('analysis:extractSelectedContainer chooses a directory and calls analysis s
   });
 });
 
+test('packagesCsv:chooseSavePath returns null on cancel and uses CSV dialog defaults', async () => {
+  const state = createDesktopState();
+  const dialogs = [];
+  const handlers = createIpcHandlers({
+    state,
+    dialog: {
+      async showSaveDialog(options) {
+        dialogs.push(options);
+        return { canceled: true };
+      },
+    },
+  });
+
+  const result = await handlers.choosePackagesCsvSavePath('C:\\Paks\\A.pak');
+
+  assert.equal(result, null);
+  assert.deepEqual(dialogs, [{
+    title: 'Export CSV...',
+    defaultPath: 'A.pak.packages.csv',
+    filters: [{ name: 'CSV Files', extensions: ['csv'] }],
+  }]);
+});
+
+test('packagesCsv:chooseSavePath appends missing CSV extension', async () => {
+  const state = createDesktopState();
+  const handlers = createIpcHandlers({
+    state,
+    dialog: {
+      async showSaveDialog() {
+        return { canceled: false, filePath: 'D:\\Exports\\A.pak.packages' };
+      },
+    },
+  });
+
+  const result = await handlers.choosePackagesCsvSavePath('C:\\Paks\\A.pak');
+
+  assert.deepEqual(result, { filePath: 'D:\\Exports\\A.pak.packages.csv' });
+});
+
+test('packagesCsv:chooseSavePath preserves uppercase CSV extension', async () => {
+  const state = createDesktopState();
+  const handlers = createIpcHandlers({
+    state,
+    dialog: {
+      async showSaveDialog() {
+        return { canceled: false, filePath: 'D:\\Exports\\A.pak.packages.CSV' };
+      },
+    },
+  });
+
+  const result = await handlers.choosePackagesCsvSavePath('C:\\Paks\\A.pak');
+
+  assert.deepEqual(result, { filePath: 'D:\\Exports\\A.pak.packages.CSV' });
+});
+
+test('packagesCsv:write writes UTF-8 CSV text and returns byte count including BOM', async () => {
+  const writes = [];
+  const state = createDesktopState();
+  const handlers = createIpcHandlers({
+    state,
+    fs: {
+      promises: {
+        async writeFile(filePath, content, encoding) {
+          writes.push({ filePath, content, encoding });
+        },
+      },
+    },
+  });
+  const csvText = '\uFEFFName\nCafé';
+
+  const result = await handlers.writePackagesCsv('D:\\Exports\\A.pak.packages', csvText);
+
+  assert.deepEqual(writes, [{
+    filePath: 'D:\\Exports\\A.pak.packages.csv',
+    content: csvText,
+    encoding: 'utf8',
+  }]);
+  assert.deepEqual(result, {
+    filePath: 'D:\\Exports\\A.pak.packages.csv',
+    byteCount: Buffer.byteLength(csvText, 'utf8'),
+  });
+});
+
+test('packagesCsv:write rejects missing output paths', async () => {
+  const state = createDesktopState();
+  const handlers = createIpcHandlers({
+    state,
+    fs: {
+      promises: {
+        async writeFile() {
+          throw new Error('write should not run');
+        },
+      },
+    },
+  });
+
+  await assert.rejects(
+    () => handlers.writePackagesCsv('   ', 'Name\nA'),
+    /Select a CSV output file before exporting\./,
+  );
+});
+
 test('package:openDirectory scans the selected directory and creates analysis service', async () => {
   const backendClientProvider = { resolveForFile() {} };
   const state = createDesktopState({ backendClientProvider });
@@ -533,6 +636,31 @@ test('createWindow sets a minimum size that matches the renderer shell constrain
   assert.equal(window.options.minWidth, 760);
   assert.equal(window.options.minHeight, 560);
   assert.match(window.loadedFile, /renderer-dist[\\/]index\.html$/);
+});
+
+test('registerIpcHandlers registers packages CSV channels', () => {
+  const handled = new Map();
+  const handlers = {
+    getBackendInfo() {},
+    openPackageDirectory() {},
+    analyze() {},
+    extractSelectedContainer() {},
+    submitAesKeyAndRetry() {},
+    clearAesKey() {},
+    chooseBackend() {},
+    requestBackendSelection() {},
+    choosePackagesCsvSavePath() {},
+    writePackagesCsv() {},
+  };
+
+  registerIpcHandlers({
+    handle(name, handler) {
+      handled.set(name, handler);
+    },
+  }, handlers);
+
+  assert.equal(handled.has('packagesCsv:chooseSavePath'), true);
+  assert.equal(handled.has('packagesCsv:write'), true);
 });
 
 test('startDesktopApp shows an error dialog and quits when startup initialization fails', async () => {

@@ -1,3 +1,4 @@
+const fs = require('node:fs');
 const path = require('node:path');
 
 const electron = require('electron');
@@ -55,6 +56,16 @@ function createValidationErrorResponse(error) {
   };
 }
 
+function ensureCsvExtension(filePath) {
+  const outputPath = String(filePath || '');
+  return path.extname(outputPath).toLowerCase() === '.csv' ? outputPath : `${outputPath}.csv`;
+}
+
+function packagesCsvDefaultPath(filePath) {
+  const basename = path.win32.basename(String(filePath || ''));
+  return `${basename}.packages.csv`;
+}
+
 function cloneResponse(response) {
   return {
     status: response.status,
@@ -90,6 +101,7 @@ function createDesktopState({
 function createIpcHandlers({
   state,
   dialog: dialogModule = dialog,
+  fs: fsModule = fs,
   scanPackageDirectory: scanPackageDirectoryFn = scanPackageDirectory,
   AnalysisService: AnalysisServiceClass = AnalysisService,
 } = {}) {
@@ -185,6 +197,39 @@ function createIpcHandlers({
       return state.analysisService.extract(filePath, selection.filePaths[0]);
     },
 
+    async choosePackagesCsvSavePath(filePath) {
+      if (typeof filePath !== 'string' || filePath.trim() === '') {
+        return null;
+      }
+
+      const selection = await dialogModule.showSaveDialog({
+        title: 'Export CSV...',
+        defaultPath: packagesCsvDefaultPath(filePath),
+        filters: [{ name: 'CSV Files', extensions: ['csv'] }],
+      });
+
+      if (selection.canceled || !selection.filePath) {
+        return null;
+      }
+
+      return { filePath: ensureCsvExtension(selection.filePath) };
+    },
+
+    async writePackagesCsv(filePath, csvText) {
+      const selectedPath = typeof filePath === 'string' ? filePath.trim() : '';
+      if (!selectedPath) {
+        throw new Error('Select a CSV output file before exporting.');
+      }
+
+      const normalizedPath = ensureCsvExtension(selectedPath);
+      const content = String(csvText ?? '');
+      await fsModule.promises.writeFile(normalizedPath, content, 'utf8');
+      return {
+        filePath: normalizedPath,
+        byteCount: Buffer.byteLength(content, 'utf8'),
+      };
+    },
+
     async submitAesKeyAndRetry(filePath, aesKey) {
       if (!state.analysisService) {
         return cloneResponse(PACKAGE_NOT_OPEN_RESPONSE);
@@ -265,6 +310,12 @@ function registerIpcHandlers(ipcMainModule, handlers) {
   ipcMainModule.handle('analysis:clearAesKey', () => handlers.clearAesKey());
   ipcMainModule.handle('backend:choose', (_event, request) => handlers.chooseBackend(request));
   ipcMainModule.handle('backend:requestSelection', (_event, filePath) => handlers.requestBackendSelection(filePath));
+  ipcMainModule.handle('packagesCsv:chooseSavePath', (_event, filePath) => (
+    handlers.choosePackagesCsvSavePath(filePath)
+  ));
+  ipcMainModule.handle('packagesCsv:write', (_event, filePath, csvText) => (
+    handlers.writePackagesCsv(filePath, csvText)
+  ));
 }
 
 const desktopState = createDesktopState();
@@ -360,6 +411,8 @@ if (app && BrowserWindow && dialog && ipcMain) {
 
 module.exports = {
   PACKAGE_NOT_OPEN_RESPONSE,
+  ensureCsvExtension,
+  packagesCsvDefaultPath,
   createDesktopState,
   createIpcHandlers,
   registerIpcHandlers,

@@ -17,6 +17,14 @@ contextBridge.exposeInMainWorld('upi', {
     return ipcRenderer.invoke('analysis:extractSelectedContainer', filePath);
   },
 
+  choosePackagesCsvSavePath(filePath) {
+    return ipcRenderer.invoke('packagesCsv:chooseSavePath', filePath);
+  },
+
+  writePackagesCsv(filePath, csvText) {
+    return ipcRenderer.invoke('packagesCsv:write', filePath, csvText);
+  },
+
   submitAesKeyAndRetry(filePath, aesKey) {
     return ipcRenderer.invoke('analysis:submitAesKeyAndRetry', filePath, aesKey);
   },
