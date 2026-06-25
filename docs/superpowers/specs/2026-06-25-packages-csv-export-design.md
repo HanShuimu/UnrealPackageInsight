@@ -185,6 +185,20 @@ Add focused automated tests for:
 - failed export showing a failure modal without changing Issues data,
 - future CLI-facing shared module behavior without importing React.
 
+Local acceptance verification should also use the existing packaged demo assets at:
+
+```text
+C:\WORKSPACE_Omni\AssetUpdate\Dist\Windows\AssetUpdateDemo\Content\Paks
+```
+
+Known validation inputs in that directory include:
+
+- `AssetUpdateDemo-Windows.pak`
+- `AssetUpdateDemo-Windows.utoc` with `AssetUpdateDemo-Windows.ucas`
+- `global.utoc` with `global.ucas`
+
+These files are local verification assets, not mandatory automated regression fixtures. Tests committed to the repository should not fail when that external directory is absent. Any automated or manual validation that uses these assets must pass their paths explicitly rather than relying on environment variables.
+
 Because this is a GUI change under `node-shell/apps/desktop/**`, final implementation must run a fresh Electron GUI smoke test. The smoke must launch the app, inspect the renderer through DevTools Protocol, and verify:
 
 - no renderer runtime exceptions,
