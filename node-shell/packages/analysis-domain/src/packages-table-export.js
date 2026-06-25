@@ -89,20 +89,19 @@ function comparePackageFileName(left, right) {
 }
 
 function compareNumericField(field) {
-  return (left, right, order = 'ascend') => {
+  return (left, right) => {
     const leftValue = left[field];
     const rightValue = right[field];
     const leftHasValue = leftValue !== undefined && Number.isFinite(leftValue);
     const rightHasValue = rightValue !== undefined && Number.isFinite(rightValue);
-    const direction = order === 'descend' ? -1 : 1;
 
     if (leftHasValue && rightHasValue && leftValue !== rightValue) {
-      return (leftValue - rightValue) * direction;
+      return leftValue - rightValue;
     }
     if (leftHasValue !== rightHasValue) {
       return leftHasValue ? -1 : 1;
     }
-    return comparePackageFileName(left, right) * direction;
+    return comparePackageFileName(left, right);
   };
 }
 
@@ -226,11 +225,21 @@ function buildPackageRows(result) {
 function sortPackageRows(rows, sortState = PACKAGE_TABLE_DEFAULT_SORT) {
   const effectiveSort = sortState || PACKAGE_TABLE_DEFAULT_SORT;
   const column = PACKAGE_TABLE_COLUMNS.find((candidate) => candidate.key === effectiveSort.columnKey);
+  const direction = effectiveSort.order === 'descend' ? -1 : 1;
   if (column?.compare) {
-    return [...rows].sort((left, right) => column.compare(left, right, effectiveSort.order));
+    return [...rows].sort((left, right) => {
+      const leftValue = left[column.key];
+      const rightValue = right[column.key];
+      const leftHasValue = leftValue !== undefined && Number.isFinite(leftValue);
+      const rightHasValue = rightValue !== undefined && Number.isFinite(rightValue);
+
+      if (leftHasValue !== rightHasValue) {
+        return leftHasValue ? -1 : 1;
+      }
+      return column.compare(left, right) * direction;
+    });
   }
 
-  const direction = effectiveSort.order === 'descend' ? -1 : 1;
   const compare = column?.compare || comparePackageFileName;
   return [...rows].sort((left, right) => compare(left, right) * direction);
 }

@@ -223,13 +223,19 @@ test('sortPackageRows keeps blank numeric values last for descending sorts', () 
   );
 });
 
-test('numeric column compare accepts sort order and keeps blank values last', () => {
+test('numeric column compare stays ascending when Ant passes descending sort order', () => {
   const sizeColumn = PACKAGE_TABLE_COLUMNS.find((column) => column.key === 'size');
   const rows = [
     { id: 'missing', fullPath: '/Game/Missing.uasset', fileName: 'Missing.uasset', source: {} },
     { id: 'small', fullPath: '/Game/Small.uasset', fileName: 'Small.uasset', size: 5, source: {} },
     { id: 'large', fullPath: '/Game/Large.uasset', fileName: 'Large.uasset', size: 20, source: {} },
   ];
+  const antLikeSort = (sortOrder) => {
+    const direction = sortOrder === 'descend' ? -1 : 1;
+    return [...rows.filter((row) => row.size !== undefined)]
+      .sort((left, right) => sizeColumn.compare(left, right, sortOrder) * direction)
+      .map((row) => row.id);
+  };
 
   assert.equal(typeof sizeColumn.compare, 'function');
   assert.deepEqual([...rows].sort(sizeColumn.compare).map((row) => row.id), ['small', 'large', 'missing']);
@@ -237,10 +243,13 @@ test('numeric column compare accepts sort order and keeps blank values last', ()
     [...rows].sort((left, right) => sizeColumn.compare(left, right, null)).map((row) => row.id),
     ['small', 'large', 'missing'],
   );
+  assert.ok(sizeColumn.compare(rows[2], rows[1], 'descend') > 0);
+  assert.ok(sizeColumn.compare(rows[1], rows[2], 'descend') < 0);
   assert.deepEqual(
     [...rows].sort((left, right) => sizeColumn.compare(left, right, 'descend')).map((row) => row.id),
-    ['large', 'small', 'missing'],
+    ['small', 'large', 'missing'],
   );
+  assert.deepEqual(antLikeSort('descend'), ['large', 'small']);
 });
 
 test('TypeScript declarations allow Ant Design null sort order for column compare', () => {
