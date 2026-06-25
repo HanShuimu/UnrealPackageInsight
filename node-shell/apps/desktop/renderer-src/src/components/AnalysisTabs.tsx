@@ -138,7 +138,7 @@ type PackagePaneProps = {
   sortState: PackageTableSortState;
   onModeChange(mode: PackageMode): void;
   onExtractSelectedContainer(): void;
-  onExportPackagesCsv(rows: PackageRow[], sortState: PackageTableSortState): void;
+  onExportPackagesCsv?(rows: PackageRow[], sortState: PackageTableSortState): void;
   onSelectPackage(row: PackageRow): void;
   onSortChange(sortState: PackageTableSortState): void;
 };
@@ -162,9 +162,9 @@ function PackagePane({
   const [contentRef, measuredHeight] = useMeasuredHeight<HTMLDivElement>();
   const availableHeight = measuredHeight || fallbackHeight;
   const packageHeight = tableBodyHeight(availableHeight);
-  const canExport = mode === 'table' && canExportPackagesCsv && !isExportingPackagesCsv;
+  const canExport = mode === 'table' && canExportPackagesCsv && Boolean(onExportPackagesCsv) && !isExportingPackagesCsv;
   const handleExportPackagesCsv = useCallback(() => {
-    onExportPackagesCsv(rows, sortState);
+    onExportPackagesCsv?.(rows, sortState);
   }, [onExportPackagesCsv, rows, sortState]);
 
   return (
@@ -265,7 +265,7 @@ export function AnalysisTabs({
   tableHeight,
   onDetailsSelectionChange,
   onExtractSelectedContainer,
-  onExportPackagesCsv = () => {},
+  onExportPackagesCsv,
 }: AnalysisTabsProps) {
   const viewModel = useMemo(() => buildAnalysisViewModel(result), [result]);
   const [activeTab, setActiveTab] = useState<AnalysisTabId>('overview');

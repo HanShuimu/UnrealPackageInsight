@@ -577,6 +577,24 @@ describe('AnalysisTabs', () => {
     );
   });
 
+  test('Export CSV button is visible but disabled when export callback is not wired yet', () => {
+    render(
+      <AnalysisTabs
+        result={analysisResult()}
+        selectedFilePath="C:\\Paks\\A.pak"
+        isExtracting={false}
+        selectedPackageId=""
+        tableHeight={500}
+        onDetailsSelectionChange={() => {}}
+        onExtractSelectedContainer={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Packages' }));
+
+    expect(screen.getByRole('button', { name: 'Export CSV...' })).toBeDisabled();
+  });
+
   test('Export CSV button is visible but disabled in Tree mode', () => {
     renderTabs(analysisResult());
 
