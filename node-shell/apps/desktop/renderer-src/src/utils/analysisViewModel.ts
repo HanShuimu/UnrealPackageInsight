@@ -1,4 +1,10 @@
 import type { AnalysisResult } from '../types/upi';
+import {
+  buildPackageRows as buildSharedPackageRows,
+  comparePackageFileName,
+  comparePackageOrder,
+  type PackageRow,
+} from '../../../../../packages/analysis-domain/src/packages-table-export.js';
 
 export type AnalysisTabId = 'overview' | 'packages' | 'issues';
 export type PackageMode = 'table' | 'tree';
@@ -16,18 +22,8 @@ export type OverviewCard = {
   value: string;
 };
 
-export type PackageRow = {
-  id: string;
-  fullPath: string;
-  fileName: string;
-  type?: string;
-  size?: number;
-  compressedSize?: number;
-  physicalOrder?: number;
-  source: Record<string, unknown>;
-};
-
-type PackageRowDraft = Omit<PackageRow, 'id'>;
+export type { PackageRow };
+export { comparePackageFileName, comparePackageOrder };
 
 export type PackageTreeItem = {
   key: string;
@@ -89,77 +85,12 @@ function toFiniteNumber(value: unknown): number | undefined {
   return undefined;
 }
 
-function firstFiniteNumber(values: unknown[]): number | undefined {
-  for (const value of values) {
-    const numberValue = toFiniteNumber(value);
-
-    if (numberValue !== undefined) {
-      return numberValue;
-    }
-  }
-
-  return undefined;
-}
-
-function firstPathValue(record: Record<string, unknown>): string | undefined {
-  const values = [
-    record.packagePath,
-    record.package_path,
-    record.path,
-    record.fullPath,
-    record.full_path,
-    record.relativePath,
-    record.relative_path,
-    record.name,
-  ];
-
-  for (const value of values) {
-    if (typeof value !== 'string') {
-      continue;
-    }
-
-    const trimmedValue = value.trim();
-
-    if (trimmedValue !== '') {
-      return trimmedValue;
-    }
-  }
-
-  return undefined;
-}
-
 function pathSegments(path: string): string[] {
   return path.replace(/\\/g, '/').split('/').filter((segment) => segment.length > 0);
 }
 
-function fileNameFromPath(path: string): string {
-  const segments = pathSegments(path);
-  return segments[segments.length - 1] ?? path;
-}
-
-function typeFromFileName(fileName: string): string | undefined {
-  const dotIndex = fileName.lastIndexOf('.');
-
-  if (dotIndex <= 0 || dotIndex === fileName.length - 1) {
-    return undefined;
-  }
-
-  return fileName.slice(dotIndex + 1).toLowerCase();
-}
-
 function compareText(left: string, right: string): number {
   return left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' });
-}
-
-function comparePackagePath(
-  left: { fileName: string; fullPath: string; id?: string },
-  right: { fileName: string; fullPath: string; id?: string },
-): number {
-  return (
-    compareText(left.fileName, right.fileName)
-    || compareText(left.fullPath, right.fullPath)
-    || compareText(left.id ?? '', right.id ?? '')
-  );
 }
 
 function formatBytes(bytes: number): string {
@@ -212,96 +143,8 @@ function sortPackageTreeItems(items: PackageTreeItem[]): PackageTreeItem[] {
   return items;
 }
 
-export function comparePackageFileName(left: PackageRow, right: PackageRow): number {
-  return comparePackagePath(left, right);
-}
-
-export function comparePackageOrder(left: PackageRow, right: PackageRow): number {
-  const leftOrder = left.physicalOrder;
-  const rightOrder = right.physicalOrder;
-  const leftHasOrder = leftOrder !== undefined;
-  const rightHasOrder = rightOrder !== undefined;
-
-  if (leftHasOrder && rightHasOrder && leftOrder !== rightOrder) {
-    return leftOrder - rightOrder;
-  }
-
-  if (leftHasOrder !== rightHasOrder) {
-    return leftHasOrder ? -1 : 1;
-  }
-
-  return comparePackageFileName(left, right);
-}
-
 export function buildPackageRows(result: AnalysisResult | null): PackageRow[] {
-  const packages = Array.isArray(result?.packages) ? result.packages : [];
-  const duplicateCounts = new Map<string, number>();
-  const rows = packages.reduce<PackageRowDraft[]>((draftRows, packageEntry) => {
-    if (!isRecord(packageEntry)) {
-      return draftRows;
-    }
-
-    const fullPath = firstPathValue(packageEntry);
-
-    if (!fullPath) {
-      return draftRows;
-    }
-
-    const fileName = fileNameFromPath(fullPath);
-    const type = typeFromFileName(fileName);
-    const size = firstFiniteNumber([
-      packageEntry.size,
-      packageEntry.diskSize,
-      packageEntry.disk_size,
-      packageEntry.uncompressedSize,
-      packageEntry.uncompressed_size,
-    ]);
-    const compressedSize = firstFiniteNumber([
-      packageEntry.compressedSize,
-      packageEntry.compressed_size,
-    ]);
-    const physicalOrder = firstFiniteNumber([
-      packageEntry.order,
-      packageEntry.physicalOrder,
-      packageEntry.physical_order,
-    ]);
-    const row: PackageRowDraft = {
-      fullPath,
-      fileName,
-      source: packageEntry,
-    };
-
-    if (type !== undefined) {
-      row.type = type;
-    }
-
-    if (size !== undefined) {
-      row.size = size;
-    }
-
-    if (compressedSize !== undefined) {
-      row.compressedSize = compressedSize;
-    }
-
-    if (physicalOrder !== undefined) {
-      row.physicalOrder = physicalOrder;
-    }
-
-    draftRows.push(row);
-    return draftRows;
-  }, []);
-
-  return rows
-    .sort(comparePackagePath)
-    .map((row) => {
-      const duplicateCount = (duplicateCounts.get(row.fullPath) ?? 0) + 1;
-      duplicateCounts.set(row.fullPath, duplicateCount);
-
-      return {
-        id: duplicateCount === 1 ? row.fullPath : `${row.fullPath}#${duplicateCount}`,
-        ...row,
-      };
-    });
+  return buildSharedPackageRows(result);
 }
 
 export function buildOverviewCards(result: AnalysisResult | null): OverviewCard[] {

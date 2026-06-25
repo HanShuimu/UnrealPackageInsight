@@ -205,6 +205,32 @@ describe('buildPackageRows', () => {
       }),
     ]);
   });
+
+  test('keeps generated package IDs distinct when package paths include duplicate suffixes', () => {
+    const rows = buildPackageRows({
+      packages: [
+        { packagePath: '../../../Game/A.uasset' },
+        { packagePath: '../../../Game/A.uasset' },
+        { packagePath: '../../../Game/A.uasset#2' },
+      ],
+    });
+
+    expect(new Set(rows.map((row) => row.id)).size).toBe(rows.length);
+  });
+});
+
+test('buildAnalysisViewModel exposes package rows from the shared packages model', () => {
+  const viewModel = buildAnalysisViewModel({
+    packages: [
+      { packagePath: '../../../Game/B.uasset', order: 2 },
+      { packagePath: '../../../Game/A.uasset', order: 1 },
+    ],
+  });
+
+  expect(viewModel.packageRows.map((row) => row.id)).toEqual([
+    '../../../Game/A.uasset',
+    '../../../Game/B.uasset',
+  ]);
 });
 
 describe('package row comparators', () => {
