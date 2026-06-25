@@ -66,6 +66,11 @@ function createClient(overrides: Partial<UpiClient> = {}): UpiClient {
       extractedFileCount: 0,
       errorCount: 0,
     }),
+    choosePackagesCsvSavePath: async () => ({ filePath: 'C:\\Exports\\packages.csv' }),
+    writePackagesCsv: async (filePath, csvText) => ({
+      filePath,
+      byteCount: new TextEncoder().encode(csvText).byteLength,
+    }),
     submitAesKeyAndRetry: async () => ({ status: 'OK', packages: [], compressedBlocks: [] }),
     clearAesKey: async () => true,
     chooseBackend: async (request) => request.selectedId || '',

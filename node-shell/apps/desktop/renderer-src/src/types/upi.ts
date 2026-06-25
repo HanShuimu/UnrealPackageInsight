@@ -91,8 +91,8 @@ export type UpiClient = {
   openPackageDirectory(): Promise<PackageScan | null>;
   analyze(filePath: string): Promise<AnalysisResult>;
   extractSelectedContainer(filePath: string): Promise<ExtractResult | null>;
-  choosePackagesCsvSavePath?(filePath: string): Promise<PackagesCsvSavePathResult | null>;
-  writePackagesCsv?(filePath: string, csvText: string): Promise<PackagesCsvWriteResult>;
+  choosePackagesCsvSavePath(filePath: string): Promise<PackagesCsvSavePathResult | null>;
+  writePackagesCsv(filePath: string, csvText: string): Promise<PackagesCsvWriteResult>;
   submitAesKeyAndRetry(filePath: string, aesKey: string): Promise<AnalysisResult>;
   clearAesKey(): Promise<boolean>;
   chooseBackend(request: BackendSelectionRequest): Promise<string>;
