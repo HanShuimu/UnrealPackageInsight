@@ -223,6 +223,23 @@ test('sortPackageRows keeps blank numeric values last for descending sorts', () 
   );
 });
 
+test('sortPackageRows sorts fullPath by full path instead of basename', () => {
+  const rows = [
+    { id: 'z', fullPath: '/Game/Z/Alpha.uasset', fileName: 'Alpha.uasset', source: {} },
+    { id: 'b', fullPath: '/Game/A/Beta.uasset', fileName: 'Beta.uasset', source: {} },
+    { id: 'a', fullPath: '/Game/A/Beta.uasset', fileName: 'Beta.uasset', source: {} },
+  ];
+
+  assert.deepEqual(
+    sortPackageRows(rows, { columnKey: 'fullPath', order: 'ascend' }).map((row) => row.id),
+    ['a', 'b', 'z'],
+  );
+  assert.deepEqual(
+    sortPackageRows(rows, { columnKey: 'fullPath', order: 'descend' }).map((row) => row.id),
+    ['z', 'b', 'a'],
+  );
+});
+
 test('numeric column compare stays ascending when Ant passes descending sort order', () => {
   const sizeColumn = PACKAGE_TABLE_COLUMNS.find((column) => column.key === 'size');
   const rows = [
@@ -232,7 +249,7 @@ test('numeric column compare stays ascending when Ant passes descending sort ord
   ];
   const antLikeSort = (sortOrder) => {
     const direction = sortOrder === 'descend' ? -1 : 1;
-    return [...rows.filter((row) => row.size !== undefined)]
+    return [...rows]
       .sort((left, right) => sizeColumn.compare(left, right, sortOrder) * direction)
       .map((row) => row.id);
   };
@@ -245,11 +262,15 @@ test('numeric column compare stays ascending when Ant passes descending sort ord
   );
   assert.ok(sizeColumn.compare(rows[2], rows[1], 'descend') > 0);
   assert.ok(sizeColumn.compare(rows[1], rows[2], 'descend') < 0);
+  assert.ok(sizeColumn.compare(rows[0], rows[1], 'descend') < 0);
+  assert.ok(sizeColumn.compare(rows[1], rows[0], 'descend') > 0);
   assert.deepEqual(
-    [...rows].sort((left, right) => sizeColumn.compare(left, right, 'descend')).map((row) => row.id),
-    ['small', 'large', 'missing'],
+    [...rows.filter((row) => row.size !== undefined)]
+      .sort((left, right) => sizeColumn.compare(left, right, 'descend'))
+      .map((row) => row.id),
+    ['small', 'large'],
   );
-  assert.deepEqual(antLikeSort('descend'), ['large', 'small']);
+  assert.deepEqual(antLikeSort('descend'), ['large', 'small', 'missing']);
 });
 
 test('TypeScript declarations allow Ant Design null sort order for column compare', () => {

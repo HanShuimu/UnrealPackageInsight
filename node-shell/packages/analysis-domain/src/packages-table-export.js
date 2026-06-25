@@ -88,8 +88,15 @@ function comparePackageFileName(left, right) {
   return comparePackagePath(left, right);
 }
 
+function comparePackageFullPath(left, right) {
+  return (
+    compareText(left.fullPath, right.fullPath)
+    || compareText(left.id || '', right.id || '')
+  );
+}
+
 function compareNumericField(field) {
-  return (left, right) => {
+  return (left, right, order = 'ascend') => {
     const leftValue = left[field];
     const rightValue = right[field];
     const leftHasValue = leftValue !== undefined && Number.isFinite(leftValue);
@@ -99,6 +106,9 @@ function compareNumericField(field) {
       return leftValue - rightValue;
     }
     if (leftHasValue !== rightHasValue) {
+      if (order === 'descend') {
+        return leftHasValue ? 1 : -1;
+      }
       return leftHasValue ? -1 : 1;
     }
     return comparePackageFileName(left, right);
@@ -136,6 +146,7 @@ const PACKAGE_TABLE_COLUMNS = Object.freeze([
     width: 520,
     fixed: 'left',
     className: 'package-path-column',
+    compare: comparePackageFullPath,
     exportValue: (row) => row.fullPath,
   }),
   Object.freeze({
