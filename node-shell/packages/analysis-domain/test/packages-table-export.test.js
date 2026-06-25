@@ -1,4 +1,8 @@
 const assert = require('node:assert/strict');
+const { spawnSync } = require('node:child_process');
+const { mkdtempSync, rmSync, writeFileSync } = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
 
 const {
@@ -230,9 +234,52 @@ test('numeric column compare accepts sort order and keeps blank values last', ()
   assert.equal(typeof sizeColumn.compare, 'function');
   assert.deepEqual([...rows].sort(sizeColumn.compare).map((row) => row.id), ['small', 'large', 'missing']);
   assert.deepEqual(
+    [...rows].sort((left, right) => sizeColumn.compare(left, right, null)).map((row) => row.id),
+    ['small', 'large', 'missing'],
+  );
+  assert.deepEqual(
     [...rows].sort((left, right) => sizeColumn.compare(left, right, 'descend')).map((row) => row.id),
     ['large', 'small', 'missing'],
   );
+});
+
+test('TypeScript declarations allow Ant Design null sort order for column compare', () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), 'packages-table-export-types-'));
+  try {
+    const modulePath = path.resolve(__dirname, '../src/packages-table-export.js');
+    const relativeModulePath = path.relative(tempDir, modulePath).replace(/\\/g, '/');
+    const moduleSpecifier = relativeModulePath.startsWith('.') ? relativeModulePath : `./${relativeModulePath}`;
+    const probePath = path.join(tempDir, 'probe.ts');
+    writeFileSync(probePath, `
+import type { PackageRow, PackageTableColumn } from '${moduleSpecifier}';
+
+type AntSortOrder = 'ascend' | 'descend' | null;
+type AntCompareFn<T> = (left: T, right: T, sortOrder: AntSortOrder) => number;
+
+declare const column: PackageTableColumn;
+if (column.compare) {
+  const sorter: AntCompareFn<PackageRow> = column.compare;
+  void sorter;
+}
+`);
+
+    const result = spawnSync(process.execPath, [
+      require.resolve('typescript/bin/tsc'),
+      '--strict',
+      '--module',
+      'CommonJS',
+      '--moduleResolution',
+      'node',
+      '--target',
+      'ES2022',
+      '--noEmit',
+      probePath,
+    ], { cwd: tempDir, encoding: 'utf8' });
+
+    assert.equal(result.status, 0, `${result.stdout}${result.stderr}`);
+  } finally {
+    rmSync(tempDir, { force: true, recursive: true });
+  }
 });
 
 test('comparators remain available for renderer detail and tree code', () => {

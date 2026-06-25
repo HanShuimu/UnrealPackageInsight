@@ -23,7 +23,7 @@ export type PackageTableColumn = {
   width: number;
   fixed?: 'left';
   className?: string;
-  compare?: (left: PackageRow, right: PackageRow, order?: PackageTableSortOrder) => number;
+  compare?: (left: PackageRow, right: PackageRow, order?: PackageTableSortOrder | null) => number;
   exportValue(row: PackageRow): string | number | undefined;
 };
 
