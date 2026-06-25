@@ -5,6 +5,7 @@ import { useCallback, useMemo } from 'react';
 import type { PackageRow } from '../utils/analysisViewModel';
 import {
   PACKAGE_TABLE_COLUMNS,
+  PACKAGE_TABLE_DEFAULT_SORT,
   sortPackageRows,
   type PackageTableColumnKey,
   type PackageTableSortState,
@@ -103,7 +104,7 @@ export function PackageTable({
       return;
     }
 
-    onSortChange(null);
+    onSortChange(PACKAGE_TABLE_DEFAULT_SORT);
   }, [onSortChange]);
   const handleRow = useCallback((row: PackageRow) => ({
     onClick: () => {

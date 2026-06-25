@@ -466,20 +466,15 @@ export function createAppStore(client: UpiClient): StoreApi<AppState> {
       }));
 
       try {
-        const savePath = await client.choosePackagesCsvSavePath(filePath);
-        if (!isCurrentPackagesCsvExport(get(), filePath, requestId, analysisRequestId)) {
-          return;
-        }
-
-        if (!savePath) {
-          set({ statusText: 'CSV export canceled' });
-          return;
-        }
-
         const sortedRows = sortPackageRows(rows, sortState);
         const csvText = serializePackagesCsv(sortedRows);
-        const result = await client.writePackagesCsv(savePath.filePath, csvText);
+        const result = await client.exportPackagesCsv(filePath, csvText);
         if (!isCurrentPackagesCsvExport(get(), filePath, requestId, analysisRequestId)) {
+          return;
+        }
+
+        if (result.canceled) {
+          set({ statusText: 'CSV export canceled' });
           return;
         }
 

@@ -197,9 +197,9 @@ function createIpcHandlers({
       return state.analysisService.extract(filePath, selection.filePaths[0]);
     },
 
-    async choosePackagesCsvSavePath(filePath) {
+    async exportPackagesCsv(filePath, csvText) {
       if (typeof filePath !== 'string' || filePath.trim() === '') {
-        return null;
+        return { canceled: true };
       }
 
       const selection = await dialogModule.showSaveDialog({
@@ -209,22 +209,14 @@ function createIpcHandlers({
       });
 
       if (selection.canceled || !selection.filePath) {
-        return null;
+        return { canceled: true };
       }
 
-      return { filePath: ensureCsvExtension(selection.filePath) };
-    },
-
-    async writePackagesCsv(filePath, csvText) {
-      const selectedPath = typeof filePath === 'string' ? filePath.trim() : '';
-      if (!selectedPath) {
-        throw new Error('Select a CSV output file before exporting.');
-      }
-
-      const normalizedPath = ensureCsvExtension(selectedPath);
+      const normalizedPath = ensureCsvExtension(selection.filePath);
       const content = String(csvText ?? '');
       await fsModule.promises.writeFile(normalizedPath, content, 'utf8');
       return {
+        canceled: false,
         filePath: normalizedPath,
         byteCount: Buffer.byteLength(content, 'utf8'),
       };
@@ -310,11 +302,8 @@ function registerIpcHandlers(ipcMainModule, handlers) {
   ipcMainModule.handle('analysis:clearAesKey', () => handlers.clearAesKey());
   ipcMainModule.handle('backend:choose', (_event, request) => handlers.chooseBackend(request));
   ipcMainModule.handle('backend:requestSelection', (_event, filePath) => handlers.requestBackendSelection(filePath));
-  ipcMainModule.handle('packagesCsv:chooseSavePath', (_event, filePath) => (
-    handlers.choosePackagesCsvSavePath(filePath)
-  ));
-  ipcMainModule.handle('packagesCsv:write', (_event, filePath, csvText) => (
-    handlers.writePackagesCsv(filePath, csvText)
+  ipcMainModule.handle('packagesCsv:export', (_event, filePath, csvText) => (
+    handlers.exportPackagesCsv(filePath, csvText)
   ));
 }
 

@@ -286,15 +286,15 @@ describe('PackageTable', () => {
     expect(onSortChange).toHaveBeenCalledWith({ columnKey: 'size', order: 'descend' });
   });
 
-  test('reports null when Ant table sorting is cleared or unsupported', () => {
+  test('reports default sort when Ant table sorting is cleared or unsupported', () => {
     const onSortChange = vi.fn();
     renderPackageTable({ onSortChange });
 
     latestTableProps().onChange?.({}, {}, { columnKey: 'size', order: null });
     latestTableProps().onChange?.({}, {}, { columnKey: 'type', order: 'ascend' });
 
-    expect(onSortChange).toHaveBeenNthCalledWith(1, null);
-    expect(onSortChange).toHaveBeenNthCalledWith(2, null);
+    expect(onSortChange).toHaveBeenNthCalledWith(1, PACKAGE_TABLE_DEFAULT_SORT);
+    expect(onSortChange).toHaveBeenNthCalledWith(2, PACKAGE_TABLE_DEFAULT_SORT);
   });
 
   test('renders package paths, byte counts, and blank missing order values', () => {

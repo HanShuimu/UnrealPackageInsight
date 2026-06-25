@@ -77,22 +77,16 @@ export type ExtractResult = {
   errorCount?: number;
 };
 
-export type PackagesCsvSavePathResult = {
-  filePath: string;
-};
-
-export type PackagesCsvWriteResult = {
-  filePath: string;
-  byteCount: number;
-};
+export type PackagesCsvExportResult =
+  | { canceled: true }
+  | { canceled: false; filePath: string; byteCount: number };
 
 export type UpiClient = {
   getBackendInfo(): Promise<BackendInfo>;
   openPackageDirectory(): Promise<PackageScan | null>;
   analyze(filePath: string): Promise<AnalysisResult>;
   extractSelectedContainer(filePath: string): Promise<ExtractResult | null>;
-  choosePackagesCsvSavePath(filePath: string): Promise<PackagesCsvSavePathResult | null>;
-  writePackagesCsv(filePath: string, csvText: string): Promise<PackagesCsvWriteResult>;
+  exportPackagesCsv(filePath: string, csvText: string): Promise<PackagesCsvExportResult>;
   submitAesKeyAndRetry(filePath: string, aesKey: string): Promise<AnalysisResult>;
   clearAesKey(): Promise<boolean>;
   chooseBackend(request: BackendSelectionRequest): Promise<string>;
