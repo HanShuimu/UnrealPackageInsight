@@ -89,15 +89,15 @@ The CLI remains intentionally small and non-interactive. It should not open dial
 Supported commands:
 
 ```text
-upi --help
-upi -h
-upi help
-upi help <command>
-upi list-backends
-upi probe <container>
-upi analyze <container> [--backend-id <id>] [--aes-key <key>] [--pretty]
-upi extract <container> --out-dir <directory> [--backend-id <id>] [--aes-key <key>]
-upi export-csv <container> --out <file.csv> [--backend-id <id>] [--aes-key <key>]
+upi-cli --help
+upi-cli -h
+upi-cli help
+upi-cli help <command>
+upi-cli list-backends
+upi-cli probe <container>
+upi-cli analyze <container> [--backend-id <id>] [--aes-key <key>] [--pretty]
+upi-cli extract <container> --out-dir <directory> [--backend-id <id>] [--aes-key <key>]
+upi-cli export-csv <container> --out <file.csv> [--backend-id <id>] [--aes-key <key>]
 ```
 
 The npm form remains:

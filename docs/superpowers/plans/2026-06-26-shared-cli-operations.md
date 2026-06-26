@@ -606,11 +606,11 @@ test('parseCli parses extract and export-csv commands', () => {
 test('parseCli rejects missing required CLI output paths', () => {
   assert.throws(
     () => parseCli(['node', 'index.js', 'extract', 'C:\\Paks\\A.pak']),
-    /Usage: node src\/index.js extract <file> --out-dir <directory>/,
+    /Usage: upi-cli extract <file> --out-dir <directory>/,
   );
   assert.throws(
     () => parseCli(['node', 'index.js', 'export-csv', 'C:\\Paks\\A.pak']),
-    /Usage: node src\/index.js export-csv <file> --out <file.csv>/,
+    /Usage: upi-cli export-csv <file> --out <file.csv>/,
   );
 });
 
@@ -651,22 +651,22 @@ Update the parser section of `node-shell/src/index.js`:
 ```js
 const USAGE = [
   'Usage:',
-  '  node src/index.js --help',
-  '  node src/index.js help [command]',
-  '  node src/index.js list-backends',
-  '  node src/index.js probe <file>',
-  '  node src/index.js analyze <file> [--backend-id <id>] [--aes-key <key>] [--pretty]',
-  '  node src/index.js extract <file> --out-dir <directory> [--backend-id <id>] [--aes-key <key>]',
-  '  node src/index.js export-csv <file> --out <file.csv> [--backend-id <id>] [--aes-key <key>]',
+  '  upi-cli --help',
+  '  upi-cli help [command]',
+  '  upi-cli list-backends',
+  '  upi-cli probe <file>',
+  '  upi-cli analyze <file> [--backend-id <id>] [--aes-key <key>] [--pretty]',
+  '  upi-cli extract <file> --out-dir <directory> [--backend-id <id>] [--aes-key <key>]',
+  '  upi-cli export-csv <file> --out <file.csv> [--backend-id <id>] [--aes-key <key>]',
 ].join('\n');
 
 const HELP_TOPICS = {
   '': USAGE,
-  'list-backends': 'Usage: node src/index.js list-backends',
-  probe: 'Usage: node src/index.js probe <file>',
-  analyze: 'Usage: node src/index.js analyze <file> [--backend-id <id>] [--aes-key <key>] [--pretty]',
-  extract: 'Usage: node src/index.js extract <file> --out-dir <directory> [--backend-id <id>] [--aes-key <key>]',
-  'export-csv': 'Usage: node src/index.js export-csv <file> --out <file.csv> [--backend-id <id>] [--aes-key <key>]',
+  'list-backends': 'Usage: upi-cli list-backends',
+  probe: 'Usage: upi-cli probe <file>',
+  analyze: 'Usage: upi-cli analyze <file> [--backend-id <id>] [--aes-key <key>] [--pretty]',
+  extract: 'Usage: upi-cli extract <file> --out-dir <directory> [--backend-id <id>] [--aes-key <key>]',
+  'export-csv': 'Usage: upi-cli export-csv <file> --out <file.csv> [--backend-id <id>] [--aes-key <key>]',
 };
 
 function readOption(args, index, usage) {
@@ -728,13 +728,13 @@ function parseCli(argv = process.argv) {
   if (command === 'probe') {
     const filePath = args[1];
     if (!filePath) {
-      throw new Error('Usage: node src/index.js probe <file>');
+      throw new Error('Usage: upi-cli probe <file>');
     }
     return { command, filePath };
   }
 
   if (command === 'analyze') {
-    const usage = 'Usage: node src/index.js analyze <file> [--backend-id <id>] [--aes-key <key>] [--pretty]';
+    const usage = 'Usage: upi-cli analyze <file> [--backend-id <id>] [--aes-key <key>] [--pretty]';
     const filePath = args[1];
     if (!filePath) {
       throw new Error(usage);
@@ -747,27 +747,27 @@ function parseCli(argv = process.argv) {
   }
 
   if (command === 'extract') {
-    const usage = 'Usage: node src/index.js extract <file> --out-dir <directory> [--backend-id <id>] [--aes-key <key>]';
+    const usage = 'Usage: upi-cli extract <file> --out-dir <directory> [--backend-id <id>] [--aes-key <key>]';
     const filePath = args[1];
     if (!filePath) {
       throw new Error(usage);
     }
     const parsed = parseCommonOptions(args, 2, usage, new Set(['--backend-id', '--aes-key', '--out-dir']));
     if (!parsed.outputDirectory) {
-      throw new Error('Usage: node src/index.js extract <file> --out-dir <directory>');
+      throw new Error('Usage: upi-cli extract <file> --out-dir <directory>');
     }
     return { command, filePath, ...parsed };
   }
 
   if (command === 'export-csv') {
-    const usage = 'Usage: node src/index.js export-csv <file> --out <file.csv> [--backend-id <id>] [--aes-key <key>]';
+    const usage = 'Usage: upi-cli export-csv <file> --out <file.csv> [--backend-id <id>] [--aes-key <key>]';
     const filePath = args[1];
     if (!filePath) {
       throw new Error(usage);
     }
     const parsed = parseCommonOptions(args, 2, usage, new Set(['--backend-id', '--aes-key', '--out']));
     if (!parsed.outputPath) {
-      throw new Error('Usage: node src/index.js export-csv <file> --out <file.csv>');
+      throw new Error('Usage: upi-cli export-csv <file> --out <file.csv>');
     }
     return { command, filePath, ...parsed };
   }
@@ -950,7 +950,7 @@ test('help extract prints command-specific usage', async () => {
 
   assert.equal(exitState.exitCode ?? 0, 0);
   assert.deepEqual(output, [
-    'Usage: node src/index.js extract <file> --out-dir <directory> [--backend-id <id>] [--aes-key <key>]',
+    'Usage: upi-cli extract <file> --out-dir <directory> [--backend-id <id>] [--aes-key <key>]',
   ]);
 });
 
