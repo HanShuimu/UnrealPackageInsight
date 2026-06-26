@@ -1,6 +1,17 @@
 import { describe, expect, test } from 'vitest';
 import { createAppStore } from './appStore';
-import type { AnalysisResult, BackendSelectionRequest, ExtractResult, PackageScan, UpiClient } from '../types/upi';
+import type {
+  AnalysisResult,
+  BackendSelectionRequest,
+  ExtractResult,
+  PackageScan,
+  PackagesCsvExportResult,
+  UpiClient,
+} from '../types/upi';
+import type {
+  PackageRow,
+  PackageTableSortState,
+} from '../../../../../packages/analysis-domain/src/packages-table-export.js';
 
 type Deferred<T> = {
   promise: Promise<T>;
@@ -66,12 +77,49 @@ function createClient(overrides: Partial<UpiClient> = {}): UpiClient {
       extractedFileCount: 0,
       errorCount: 0,
     }),
+    exportPackagesCsv: async (_filePath, csvText) => ({
+      canceled: false,
+      filePath: 'D:\\Exports\\A.pak.packages.csv',
+      byteCount: new TextEncoder().encode(csvText).byteLength,
+    }),
     submitAesKeyAndRetry: async () => ({ status: 'OK', packages: [], compressedBlocks: [] }),
     clearAesKey: async () => true,
     chooseBackend: async (request) => request.selectedId || '',
     requestBackendSelection: async () => null,
     ...overrides,
   };
+}
+
+const exportRows: PackageRow[] = [
+  {
+    id: '../../../Game/A.uasset',
+    fullPath: '../../../Game/A.uasset',
+    fileName: 'A.uasset',
+    size: 20,
+    compressedSize: 10,
+    physicalOrder: 1,
+    source: {},
+  },
+];
+
+async function exportPackagesCsv(
+  store: ReturnType<typeof createAppStore>,
+  rows: PackageRow[],
+  sortState: PackageTableSortState,
+): Promise<void> {
+  const action = store.getState().exportPackagesCsv;
+  if (!action) {
+    throw new Error('Missing exportPackagesCsv action.');
+  }
+  await action(rows, sortState);
+}
+
+function dismissPackagesCsvExportDialog(store: ReturnType<typeof createAppStore>): void {
+  const action = store.getState().dismissPackagesCsvExportDialog;
+  if (!action) {
+    throw new Error('Missing dismissPackagesCsvExportDialog action.');
+  }
+  action();
 }
 
 describe('appStore', () => {
@@ -461,5 +509,261 @@ describe('appStore', () => {
       message: 'Extraction failed.',
     });
     expect(store.getState().isExtracting).toBe(false);
+  });
+
+  test('exportPackagesCsv reports cancel without changing analysis result', async () => {
+    const store = createAppStore(
+      createClient({
+        exportPackagesCsv: async () => ({ canceled: true }),
+      }),
+    );
+    await store.getState().analyzeFile('C:\\Paks\\A.pak');
+    const before = store.getState().analysisResult;
+
+    await exportPackagesCsv(store, exportRows, null);
+
+    expect(store.getState().analysisResult).toBe(before);
+    expect(store.getState().statusText).toBe('CSV export canceled');
+    expect(store.getState().dialog.packagesCsvExport).toBeNull();
+    expect(store.getState().isExportingPackagesCsv).toBe(false);
+  });
+
+  test('exportPackagesCsv writes csv and opens success dialog with singular count', async () => {
+    const exports: Array<{ filePath: string; csvText: string }> = [];
+    const store = createAppStore(
+      createClient({
+        exportPackagesCsv: async (filePath, csvText) => {
+          exports.push({ filePath, csvText });
+          return {
+            canceled: false,
+            filePath: 'D:\\Exports\\A.pak.packages.csv',
+            byteCount: new TextEncoder().encode(csvText).byteLength,
+          };
+        },
+      }),
+    );
+    await store.getState().analyzeFile('C:\\Paks\\A.pak');
+    const before = store.getState().analysisResult;
+
+    await exportPackagesCsv(store, exportRows, null);
+
+    expect(exports).toEqual([
+      {
+        filePath: 'C:\\Paks\\A.pak',
+        csvText: '\ufeffFull Path,Size,Compressed,Order\r\n../../../Game/A.uasset,20,10,1\r\n',
+      },
+    ]);
+    expect(store.getState().analysisResult).toBe(before);
+    expect(store.getState().statusText).toBe('CSV exported');
+    expect(store.getState().dialog.packagesCsvExport).toEqual({
+      kind: 'success',
+      title: 'CSV exported',
+      message: 'D:\\Exports\\A.pak.packages.csv\n1 package exported.',
+    });
+    expect(store.getState().isExportingPackagesCsv).toBe(false);
+  });
+
+  test('exportPackagesCsv success dialog uses plural count', async () => {
+    const rows: PackageRow[] = [
+      ...exportRows,
+      {
+        id: '../../../Game/B.uasset',
+        fullPath: '../../../Game/B.uasset',
+        fileName: 'B.uasset',
+        size: 40,
+        compressedSize: 30,
+        physicalOrder: 2,
+        source: {},
+      },
+    ];
+    const store = createAppStore(createClient());
+    await store.getState().analyzeFile('C:\\Paks\\A.pak');
+
+    await exportPackagesCsv(store, rows, null);
+
+    expect(store.getState().dialog.packagesCsvExport).toEqual({
+      kind: 'success',
+      title: 'CSV exported',
+      message: 'D:\\Exports\\A.pak.packages.csv\n2 packages exported.',
+    });
+  });
+
+  test('exportPackagesCsv shows failure dialog without mutating analysis issues', async () => {
+    const store = createAppStore(
+      createClient({
+        analyze: async () => ({
+          status: 'OK',
+          issues: [{ severity: 'warning', code: 'analysis.warning', message: 'Original warning.' }],
+          packages: [],
+          compressedBlocks: [],
+        }),
+        exportPackagesCsv: async () => {
+          throw new Error('Disk is full');
+        },
+      }),
+    );
+    await store.getState().analyzeFile('C:\\Paks\\A.pak');
+    const before = store.getState().analysisResult;
+    const beforeIssues = store.getState().analysisResult?.issues;
+
+    await exportPackagesCsv(store, exportRows, null);
+
+    expect(store.getState().analysisResult).toBe(before);
+    expect(store.getState().analysisResult?.issues).toBe(beforeIssues);
+    expect(store.getState().statusText).toBe('CSV export failed');
+    expect(store.getState().dialog.packagesCsvExport).toEqual({
+      kind: 'error',
+      title: 'CSV export failed',
+      message: 'Disk is full',
+    });
+    expect(store.getState().isExportingPackagesCsv).toBe(false);
+  });
+
+  test('exportPackagesCsv refuses empty row exports without writing a file', async () => {
+    const exports: Array<{ filePath: string; csvText: string }> = [];
+    const store = createAppStore(
+      createClient({
+        exportPackagesCsv: async (filePath, csvText) => {
+          exports.push({ filePath, csvText });
+          return { canceled: false, filePath, byteCount: new TextEncoder().encode(csvText).byteLength };
+        },
+      }),
+    );
+    await store.getState().analyzeFile('C:\\Paks\\A.pak');
+    const before = store.getState().analysisResult;
+
+    await exportPackagesCsv(store, [], null);
+
+    expect(store.getState().analysisResult).toBe(before);
+    expect(exports).toEqual([]);
+    expect(store.getState().statusText).toBe('CSV export failed');
+    expect(store.getState().dialog.packagesCsvExport).toEqual({
+      kind: 'error',
+      title: 'CSV export failed',
+      message: 'No packages to export.',
+    });
+    expect(store.getState().isExportingPackagesCsv).toBe(false);
+  });
+
+  test('exportPackagesCsv refuses export when no container is selected', async () => {
+    const exports: Array<{ filePath: string; csvText: string }> = [];
+    const store = createAppStore(
+      createClient({
+        exportPackagesCsv: async (filePath, csvText) => {
+          exports.push({ filePath, csvText });
+          return { canceled: false, filePath, byteCount: new TextEncoder().encode(csvText).byteLength };
+        },
+      }),
+    );
+
+    await exportPackagesCsv(store, exportRows, null);
+
+    expect(store.getState().analysisResult).toBeNull();
+    expect(exports).toEqual([]);
+    expect(store.getState().statusText).toBe('CSV export failed');
+    expect(store.getState().dialog.packagesCsvExport).toEqual({
+      kind: 'error',
+      title: 'CSV export failed',
+      message: 'Select a container first.',
+    });
+    expect(store.getState().isExportingPackagesCsv).toBe(false);
+  });
+
+  test('exportPackagesCsv honors table sort state when writing csv rows', async () => {
+    const exports: Array<{ filePath: string; csvText: string }> = [];
+    const rows: PackageRow[] = [
+      {
+        id: '../../../Game/Small.uasset',
+        fullPath: '../../../Game/Small.uasset',
+        fileName: 'Small.uasset',
+        size: 10,
+        compressedSize: 5,
+        physicalOrder: 1,
+        source: {},
+      },
+      {
+        id: '../../../Game/Large.uasset',
+        fullPath: '../../../Game/Large.uasset',
+        fileName: 'Large.uasset',
+        size: 30,
+        compressedSize: 20,
+        physicalOrder: 2,
+        source: {},
+      },
+    ];
+    const sortState: PackageTableSortState = { columnKey: 'size', order: 'descend' };
+    const store = createAppStore(
+      createClient({
+        exportPackagesCsv: async (filePath, csvText) => {
+          exports.push({ filePath, csvText });
+          return { canceled: false, filePath, byteCount: new TextEncoder().encode(csvText).byteLength };
+        },
+      }),
+    );
+    await store.getState().analyzeFile('C:\\Paks\\A.pak');
+
+    await exportPackagesCsv(store, rows, sortState);
+
+    expect(exports[0]?.csvText).toBe(
+      '\ufeffFull Path,Size,Compressed,Order\r\n'
+      + '../../../Game/Large.uasset,30,20,2\r\n'
+      + '../../../Game/Small.uasset,10,5,1\r\n',
+    );
+  });
+
+  test('stale export is ignored if analysis changes before export resolves', async () => {
+    const exportResult = createDeferred<PackagesCsvExportResult>();
+    const exports: Array<{ filePath: string; csvText: string }> = [];
+    const store = createAppStore(
+      createClient({
+        exportPackagesCsv: (filePath, csvText) => {
+          exports.push({ filePath, csvText });
+          return exportResult.promise;
+        },
+      }),
+    );
+    await store.getState().analyzeFile('C:\\Paks\\A.pak');
+
+    const exportRun = exportPackagesCsv(store, exportRows, null);
+    await store.getState().analyzeFile('C:\\Paks\\B.pak');
+    exportResult.resolve({ canceled: false, filePath: 'D:\\Exports\\A.pak.packages.csv', byteCount: 1 });
+    await exportRun;
+
+    expect(exports).toEqual([{
+      filePath: 'C:\\Paks\\A.pak',
+      csvText: '\ufeffFull Path,Size,Compressed,Order\r\n../../../Game/A.uasset,20,10,1\r\n',
+    }]);
+    expect(store.getState().selectedFilePath).toBe('C:\\Paks\\B.pak');
+    expect(store.getState().statusText).toBe('Analysis ready');
+    expect(store.getState().dialog.packagesCsvExport).toBeNull();
+    expect(store.getState().isExportingPackagesCsv).toBe(false);
+  });
+
+  test('dismissPackagesCsvExportDialog clears only the csv export dialog', () => {
+    const backendSelection = createBackendSelection('C:\\Paks\\A.pak');
+    const store = createAppStore(createClient());
+    store.setState({
+      dialog: {
+        aesFilePath: 'C:\\Paks\\A.pak',
+        aesMessage: 'AES key required.',
+        backendSelection,
+        backendSelectionRequestId: 7,
+        packagesCsvExport: {
+          kind: 'error',
+          title: 'CSV export failed',
+          message: 'Disk is full',
+        },
+      },
+    });
+
+    dismissPackagesCsvExportDialog(store);
+
+    expect(store.getState().dialog).toEqual({
+      aesFilePath: 'C:\\Paks\\A.pak',
+      aesMessage: 'AES key required.',
+      backendSelection,
+      backendSelectionRequestId: 7,
+      packagesCsvExport: null,
+    });
   });
 });

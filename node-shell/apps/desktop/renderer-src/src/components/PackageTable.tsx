@@ -1,12 +1,22 @@
 import { Empty, Table } from 'antd';
+import type { TableProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useCallback, useMemo } from 'react';
-import { comparePackageFileName, type PackageRow } from '../utils/analysisViewModel';
+import type { PackageRow } from '../utils/analysisViewModel';
+import {
+  PACKAGE_TABLE_COLUMNS,
+  PACKAGE_TABLE_DEFAULT_SORT,
+  sortPackageRows,
+  type PackageTableColumnKey,
+  type PackageTableSortState,
+} from '../../../../../packages/analysis-domain/src/packages-table-export.js';
 
 type PackageTableProps = {
   rows: PackageRow[];
   height: number;
+  sortState: PackageTableSortState;
   onSelectPackage(row: PackageRow): void;
+  onSortChange(sortState: PackageTableSortState): void;
 };
 
 const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -32,68 +42,70 @@ function formatBytes(bytes: number | undefined): string {
   return `${sign}${value.toFixed(2)} ${BYTE_UNITS[unitIndex]}`;
 }
 
-function compareNumericField(field: 'size' | 'compressedSize' | 'physicalOrder') {
-  return (left: PackageRow, right: PackageRow): number => {
-    const leftValue = left[field];
-    const rightValue = right[field];
-    const leftHasValue = leftValue !== undefined && Number.isFinite(leftValue);
-    const rightHasValue = rightValue !== undefined && Number.isFinite(rightValue);
+const PACKAGE_COLUMN_KEYS = new Set<PackageTableColumnKey>(
+  PACKAGE_TABLE_COLUMNS.map((column) => column.key),
+);
 
-    if (leftHasValue && rightHasValue && leftValue !== rightValue) {
-      return leftValue - rightValue;
-    }
-
-    if (leftHasValue !== rightHasValue) {
-      return leftHasValue ? -1 : 1;
-    }
-
-    return comparePackageFileName(left, right);
-  };
+function isPackageTableColumnKey(value: unknown): value is PackageTableColumnKey {
+  return typeof value === 'string' && PACKAGE_COLUMN_KEYS.has(value as PackageTableColumnKey);
 }
 
-const columns: ColumnsType<PackageRow> = [
-  {
-    dataIndex: 'fullPath',
-    key: 'fullPath',
-    title: 'Full Path',
-    fixed: 'left',
-    ellipsis: false,
-    width: 520,
-    className: 'package-path-column',
-    render: (fullPath: PackageRow['fullPath']) => (
-      <span className="package-path-cell" title={fullPath}>
-        {fullPath}
-      </span>
-    ),
-  },
-  {
-    dataIndex: 'size',
-    key: 'size',
-    title: 'Size',
-    width: 120,
-    sorter: compareNumericField('size'),
-    render: (size: PackageRow['size']) => formatBytes(size),
-  },
-  {
-    dataIndex: 'compressedSize',
-    key: 'compressedSize',
-    title: 'Compressed',
-    width: 140,
-    sorter: compareNumericField('compressedSize'),
-    render: (compressedSize: PackageRow['compressedSize']) => formatBytes(compressedSize),
-  },
-  {
-    dataIndex: 'physicalOrder',
-    key: 'physicalOrder',
-    title: 'Order',
-    width: 100,
-    sorter: compareNumericField('physicalOrder'),
-    render: (physicalOrder: PackageRow['physicalOrder']) => physicalOrder ?? '',
-  },
-];
+export function PackageTable({
+  rows,
+  height,
+  sortState,
+  onSelectPackage,
+  onSortChange,
+}: PackageTableProps) {
+  const columns = useMemo<ColumnsType<PackageRow>>(() => PACKAGE_TABLE_COLUMNS.map((column) => ({
+    dataIndex: column.dataIndex,
+    key: column.key,
+    title: column.title,
+    fixed: column.fixed,
+    ellipsis: column.key === 'fullPath' ? false : undefined,
+    width: column.width,
+    className: column.className,
+    sorter: column.compare
+      ? (left, right, sortOrder) => column.compare?.(left, right, sortOrder) ?? 0
+      : undefined,
+    sortOrder: sortState?.columnKey === column.key ? sortState.order : undefined,
+    render: (value, row) => {
+      if (column.key === 'fullPath') {
+        return (
+          <span className="package-path-cell" title={row.fullPath}>
+            {row.fullPath}
+          </span>
+        );
+      }
+      if (column.key === 'size') {
+        return formatBytes(value as PackageRow['size']);
+      }
+      if (column.key === 'compressedSize') {
+        return formatBytes(value as PackageRow['compressedSize']);
+      }
+      if (column.key === 'physicalOrder') {
+        return (value as PackageRow['physicalOrder']) ?? '';
+      }
+      return value;
+    },
+  })), [sortState]);
+  const dataSource = useMemo(() => sortPackageRows(rows, sortState), [rows, sortState]);
+  const handleChange = useCallback<NonNullable<TableProps<PackageRow>['onChange']>>((
+    _pagination,
+    _filters,
+    sorter,
+  ) => {
+    const activeSorter = Array.isArray(sorter) ? sorter.find((candidate) => candidate.order) : sorter;
+    const columnKey = activeSorter?.columnKey;
+    const order = activeSorter?.order;
 
-export function PackageTable({ rows, height, onSelectPackage }: PackageTableProps) {
-  const dataSource = useMemo(() => [...rows].sort(comparePackageFileName), [rows]);
+    if (isPackageTableColumnKey(columnKey) && (order === 'ascend' || order === 'descend')) {
+      onSortChange({ columnKey, order });
+      return;
+    }
+
+    onSortChange(PACKAGE_TABLE_DEFAULT_SORT);
+  }, [onSortChange]);
   const handleRow = useCallback((row: PackageRow) => ({
     onClick: () => {
       onSelectPackage(row);
@@ -115,6 +127,7 @@ export function PackageTable({ rows, height, onSelectPackage }: PackageTableProp
       size="small"
       tableLayout="auto"
       virtual
+      onChange={handleChange}
       onRow={handleRow}
     />
   );

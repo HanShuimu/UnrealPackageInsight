@@ -4,6 +4,10 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import App from './App';
 import type { AppState } from './stores/appStore';
 import type { DetailSelection } from './utils/analysisViewModel';
+import type {
+  PackageRow,
+  PackageTableSortState,
+} from '../../../../packages/analysis-domain/src/packages-table-export.js';
 
 type ObserverRecord = {
   callback: ResizeObserverCallback;
@@ -16,6 +20,8 @@ const mockHarness = vi.hoisted(() => ({
     cancelAesDialog: vi.fn(),
     cancelBackendDialog: vi.fn(),
     chooseBackend: vi.fn(() => Promise.resolve()),
+    dismissPackagesCsvExportDialog: vi.fn(),
+    exportPackagesCsv: vi.fn(() => Promise.resolve()),
     extractSelectedContainer: vi.fn(() => Promise.resolve()),
     loadBackendInfo: vi.fn(() => Promise.resolve()),
     openDirectory: vi.fn(() => Promise.resolve()),
@@ -54,15 +60,19 @@ vi.mock('./stores/useAppStore', () => ({
 vi.mock('./components/AnalysisTabs', () => ({
   AnalysisTabs: ({
     isExtracting,
+    isExportingPackagesCsv,
     onDetailsSelectionChange,
     onExtractSelectedContainer,
+    onExportPackagesCsv,
     selectedFilePath,
     selectedPackageId,
     tableHeight,
   }: {
     isExtracting: boolean;
+    isExportingPackagesCsv: boolean;
     onDetailsSelectionChange(selection: DetailSelection | null): void;
     onExtractSelectedContainer(): void;
+    onExportPackagesCsv(rows: PackageRow[], sortState: PackageTableSortState): void;
     selectedFilePath: string;
     selectedPackageId: string;
     tableHeight: number;
@@ -70,6 +80,7 @@ vi.mock('./components/AnalysisTabs', () => ({
     <div
       data-selected-package-id={selectedPackageId}
       data-testid="analysis-tabs"
+      data-exporting={isExportingPackagesCsv ? 'true' : 'false'}
       data-height={tableHeight}
     >
       <button
@@ -94,6 +105,20 @@ vi.mock('./components/AnalysisTabs', () => ({
         })}
       >
         Select package detail
+      </button>
+      <button
+        type="button"
+        onClick={() => onExportPackagesCsv([
+          {
+            id: '../../../Game/Content/Foo.uasset',
+            fullPath: '../../../Game/Content/Foo.uasset',
+            fileName: 'Foo.uasset',
+            physicalOrder: 7,
+            source: {},
+          },
+        ], { columnKey: 'physicalOrder', order: 'ascend' })}
+      >
+        Export probe
       </button>
     </div>
   ),
@@ -120,21 +145,26 @@ function createMockState(overrides: Partial<AppState> = {}): AppState {
       aesMessage: '',
       backendSelection: null,
       backendSelectionRequestId: 0,
+      packagesCsvExport: null,
     },
     isAnalyzing: false,
     isExtracting: false,
+    isExportingPackagesCsv: false,
     isOpeningDirectory: false,
     extractRequestId: 0,
     extractSelectedContainer: mockHarness.actions.extractSelectedContainer,
+    exportPackagesCsv: mockHarness.actions.exportPackagesCsv,
     loadBackendInfo: mockHarness.actions.loadBackendInfo,
     openDirectory: mockHarness.actions.openDirectory,
     openBackendSelection: mockHarness.actions.openBackendSelection,
     openDirectoryRequestId: 0,
+    packagesCsvExportRequestId: 0,
     scan: null,
     selectedFilePath: '',
     statusText: 'Ready',
     submitAesKey: mockHarness.actions.submitAesKey,
     analyzeFile: mockHarness.actions.analyzeFile,
+    dismissPackagesCsvExportDialog: mockHarness.actions.dismissPackagesCsvExportDialog,
   };
 
   return {
@@ -398,6 +428,93 @@ describe('App', () => {
     expect(probe).toHaveAttribute('data-selected-file-path', 'C:\\Paks\\A.pak');
     fireEvent.click(probe);
     expect(mockHarness.actions.extractSelectedContainer).toHaveBeenCalledTimes(1);
+  });
+
+  test('passes export loading state and action to analysis tabs', () => {
+    mockHarness.state = createMockState({
+      isExportingPackagesCsv: true,
+    });
+
+    render(<App />);
+
+    expect(screen.getByTestId('analysis-tabs')).toHaveAttribute('data-exporting', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Export probe' }));
+
+    expect(mockHarness.actions.exportPackagesCsv).toHaveBeenCalledTimes(1);
+    expect(mockHarness.actions.exportPackagesCsv).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          id: '../../../Game/Content/Foo.uasset',
+          fullPath: '../../../Game/Content/Foo.uasset',
+          fileName: 'Foo.uasset',
+          physicalOrder: 7,
+        }),
+      ],
+      { columnKey: 'physicalOrder', order: 'ascend' },
+    );
+  });
+
+  test('shows the analysis spinner while a packages CSV export is in progress', () => {
+    mockHarness.state = createMockState({
+      isExportingPackagesCsv: true,
+    });
+
+    const { container } = render(<App />);
+
+    expect(screen.getByTestId('analysis-tabs')).toHaveAttribute('data-exporting', 'true');
+    expect(container.querySelector('.analysis-content .ant-spin-spinning')).toBeInTheDocument();
+  });
+
+  test('renders packages CSV success dialog and dismisses it from OK', () => {
+    mockHarness.state = createMockState({
+      dialog: {
+        aesFilePath: '',
+        aesMessage: '',
+        backendSelection: null,
+        backendSelectionRequestId: 0,
+        packagesCsvExport: {
+          kind: 'success',
+          title: 'Packages CSV exported',
+          message: 'Saved to:\nC:\\Exports\\packages.csv\n\nExported 2 package rows.',
+        },
+      },
+    });
+
+    render(<App />);
+
+    expect(screen.getByRole('dialog', { name: 'Packages CSV exported' })).toBeInTheDocument();
+    expect(screen.getByText(/C:\\Exports\\packages\.csv/)).toHaveStyle({ whiteSpace: 'pre-wrap' });
+    expect(screen.getByText(/Exported 2 package rows\./)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }));
+
+    expect(mockHarness.actions.dismissPackagesCsvExportDialog).toHaveBeenCalledTimes(1);
+  });
+
+  test('renders packages CSV error dialog and dismisses it from OK', () => {
+    mockHarness.state = createMockState({
+      dialog: {
+        aesFilePath: '',
+        aesMessage: '',
+        backendSelection: null,
+        backendSelectionRequestId: 0,
+        packagesCsvExport: {
+          kind: 'error',
+          title: 'Packages CSV export failed',
+          message: 'Could not save CSV.\nDisk is full.',
+        },
+      },
+    });
+
+    render(<App />);
+
+    expect(screen.getByRole('dialog', { name: 'Packages CSV export failed' })).toBeInTheDocument();
+    expect(screen.getByText(/Disk is full\./)).toHaveStyle({ whiteSpace: 'pre-wrap' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }));
+
+    expect(mockHarness.actions.dismissPackagesCsvExportDialog).toHaveBeenCalledTimes(1);
   });
 
   test('passes measured region heights to virtualized regions', async () => {

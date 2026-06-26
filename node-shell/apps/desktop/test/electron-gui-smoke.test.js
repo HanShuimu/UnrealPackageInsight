@@ -391,8 +391,15 @@ test('Electron GUI launches, mounts the renderer, and exposes preload API', { re
     + ' && document.querySelector("#root")?.textContent?.trim().length > 0'
   ));
 
+  await evaluate(client, (
+    'Array.from(document.querySelectorAll("[role=\'tab\']"))'
+    + '.find((element) => element.textContent?.trim() === "Packages")'
+    + '?.click(); true'
+  ));
+  await waitFor(client, 'document.body.innerText.includes("Export CSV...")');
+
   const visibleText = await evaluate(client, 'document.body.innerText');
-  for (const expectedText of ['Overview', 'Packages', 'Issues', 'Opened containers', 'Details']) {
+  for (const expectedText of ['Overview', 'Packages', 'Issues', 'Opened containers', 'Details', 'Export CSV...']) {
     assert.match(visibleText, new RegExp(expectedText));
   }
 

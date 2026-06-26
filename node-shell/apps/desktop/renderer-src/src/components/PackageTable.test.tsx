@@ -2,6 +2,11 @@ import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { PackageRow } from '../utils/analysisViewModel';
+import {
+  PACKAGE_TABLE_COLUMNS,
+  PACKAGE_TABLE_DEFAULT_SORT,
+  type PackageTableSortState,
+} from '../../../../../packages/analysis-domain/src/packages-table-export.js';
 import { PackageTable } from './PackageTable';
 
 type MockColumn = {
@@ -12,7 +17,8 @@ type MockColumn = {
   ellipsis?: boolean;
   width?: number;
   className?: string;
-  sorter?: (left: PackageRow, right: PackageRow) => number;
+  sorter?: (left: PackageRow, right: PackageRow, sortOrder?: 'ascend' | 'descend' | null) => number;
+  sortOrder?: 'ascend' | 'descend' | null;
   render?: (value: unknown, row: PackageRow) => React.ReactNode;
 };
 
@@ -27,6 +33,11 @@ type MockTableProps = {
   tableLayout?: string;
   virtual?: boolean;
   onRow?: (row: PackageRow) => { onClick?: () => void };
+  onChange?: (
+    pagination: unknown,
+    filters: unknown,
+    sorter: { columnKey?: React.Key; order?: 'ascend' | 'descend' | null } | Array<unknown>,
+  ) => void;
 };
 
 const tableHarness = vi.hoisted(() => ({
@@ -117,6 +128,26 @@ function sorterByKey(key: string): (left: PackageRow, right: PackageRow) => numb
   return sorter as (left: PackageRow, right: PackageRow) => number;
 }
 
+function renderPackageTable({
+  tableRows = rows,
+  sortState = PACKAGE_TABLE_DEFAULT_SORT,
+  onSortChange = () => {},
+}: {
+  tableRows?: PackageRow[];
+  sortState?: PackageTableSortState;
+  onSortChange?: (sortState: PackageTableSortState) => void;
+} = {}) {
+  return render(
+    <PackageTable
+      rows={tableRows}
+      height={420}
+      sortState={sortState}
+      onSelectPackage={() => {}}
+      onSortChange={onSortChange}
+    />,
+  );
+}
+
 function renderColumnText(column: MockColumn, value: unknown, row: PackageRow): string {
   const rendered = column.render?.(value, row);
 
@@ -148,7 +179,7 @@ describe('PackageTable', () => {
   });
 
   test('configures the required Ant Design table props and virtual table geometry', () => {
-    render(<PackageTable rows={rows} height={420} onSelectPackage={() => {}} />);
+    renderPackageTable();
 
     const table = screen.getByTestId('mock-table');
     expect(table).toHaveAttribute('data-bordered', 'true');
@@ -162,15 +193,12 @@ describe('PackageTable', () => {
   });
 
   test('configures the exact package table column order and contracts', () => {
-    render(<PackageTable rows={rows} height={420} onSelectPackage={() => {}} />);
+    renderPackageTable();
 
     const columns = latestColumns();
-    expect(columns.map(({ dataIndex, key, title, width }) => ({ dataIndex, key, title, width }))).toEqual([
-      { dataIndex: 'fullPath', key: 'fullPath', title: 'Full Path', width: 520 },
-      { dataIndex: 'size', key: 'size', title: 'Size', width: 120 },
-      { dataIndex: 'compressedSize', key: 'compressedSize', title: 'Compressed', width: 140 },
-      { dataIndex: 'physicalOrder', key: 'physicalOrder', title: 'Order', width: 100 },
-    ]);
+    expect(columns.map(({ dataIndex, key, title, width }) => ({ dataIndex, key, title, width }))).toEqual(
+      PACKAGE_TABLE_COLUMNS.map(({ dataIndex, key, title, width }) => ({ dataIndex, key, title, width })),
+    );
     expect(columns.some((column) => column.key === 'type' || column.title === 'Type')).toBe(false);
 
     const firstColumn = columns[0];
@@ -193,14 +221,18 @@ describe('PackageTable', () => {
     expect(columnByKey('physicalOrder').sorter).toEqual(expect.any(Function));
   });
 
-  test('sorts the data source by package file name before rendering', () => {
-    render(<PackageTable rows={rows} height={320} onSelectPackage={() => {}} />);
+  test('sorts the data source by the controlled physical order default before rendering', () => {
+    const physicalRows = [
+      packageRow({ id: 'alpha', fileName: 'Alpha.uasset', physicalOrder: 9 }),
+      packageRow({ id: 'zeta', fileName: 'Zeta.uasset', physicalOrder: 1 }),
+    ];
+    renderPackageTable({ tableRows: physicalRows });
 
-    expect(latestTableProps().dataSource?.map((row) => row.fileName)).toEqual(['Base.ini', 'Beta.uasset']);
+    expect(latestTableProps().dataSource?.map((row) => row.fileName)).toEqual(['Zeta.uasset', 'Alpha.uasset']);
   });
 
   test('sorts numeric columns ascending, places missing values last, and falls back to file name ties', () => {
-    render(<PackageTable rows={rows} height={320} onSelectPackage={() => {}} />);
+    renderPackageTable();
 
     const low = packageRow({
       id: 'low',
@@ -238,8 +270,35 @@ describe('PackageTable', () => {
     });
   });
 
+  test('marks the controlled Order column as sorted by default', () => {
+    renderPackageTable();
+
+    expect(columnByKey('physicalOrder').sortOrder).toBe('ascend');
+    expect(columnByKey('size').sortOrder).toBeUndefined();
+  });
+
+  test('reports Ant table sort changes using the shared package table sort state', () => {
+    const onSortChange = vi.fn();
+    renderPackageTable({ onSortChange });
+
+    latestTableProps().onChange?.({}, {}, { columnKey: 'size', order: 'descend' });
+
+    expect(onSortChange).toHaveBeenCalledWith({ columnKey: 'size', order: 'descend' });
+  });
+
+  test('reports default sort when Ant table sorting is cleared or unsupported', () => {
+    const onSortChange = vi.fn();
+    renderPackageTable({ onSortChange });
+
+    latestTableProps().onChange?.({}, {}, { columnKey: 'size', order: null });
+    latestTableProps().onChange?.({}, {}, { columnKey: 'type', order: 'ascend' });
+
+    expect(onSortChange).toHaveBeenNthCalledWith(1, PACKAGE_TABLE_DEFAULT_SORT);
+    expect(onSortChange).toHaveBeenNthCalledWith(2, PACKAGE_TABLE_DEFAULT_SORT);
+  });
+
   test('renders package paths, byte counts, and blank missing order values', () => {
-    render(<PackageTable rows={rows} height={320} onSelectPackage={() => {}} />);
+    renderPackageTable();
 
     expect(renderColumnText(columnByKey('size'), 3000, rows[0])).toBe('2.93 KB');
     expect(renderColumnText(columnByKey('compressedSize'), 1200, rows[0])).toBe('1.17 KB');
@@ -251,7 +310,15 @@ describe('PackageTable', () => {
 
   test('selects the package when a rendered row is clicked', () => {
     const onSelectPackage = vi.fn();
-    render(<PackageTable rows={rows} height={320} onSelectPackage={onSelectPackage} />);
+    render(
+      <PackageTable
+        rows={rows}
+        height={320}
+        sortState={PACKAGE_TABLE_DEFAULT_SORT}
+        onSelectPackage={onSelectPackage}
+        onSortChange={() => {}}
+      />,
+    );
 
     fireEvent.click(screen.getByTestId('row-base'));
 
@@ -259,7 +326,7 @@ describe('PackageTable', () => {
   });
 
   test('shows the empty package message when there are no rows', () => {
-    render(<PackageTable rows={[]} height={320} onSelectPackage={() => {}} />);
+    renderPackageTable({ tableRows: [] });
 
     expect(screen.getByText('No packages to show.')).toBeInTheDocument();
   });

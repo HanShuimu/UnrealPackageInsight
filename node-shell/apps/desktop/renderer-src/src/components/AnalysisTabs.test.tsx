@@ -3,6 +3,10 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { DetailSelection, IssueRow, PackageRow } from '../utils/analysisViewModel';
 import type { AnalysisResult } from '../types/upi';
+import {
+  PACKAGE_TABLE_DEFAULT_SORT,
+  type PackageTableSortState,
+} from '../../../../../packages/analysis-domain/src/packages-table-export.js';
 import { AnalysisTabs } from './AnalysisTabs';
 
 type ObserverRecord = {
@@ -29,7 +33,9 @@ type MockTableProps = {
 type PackageTableProbeProps = {
   rows: PackageRow[];
   height: number;
+  sortState: PackageTableSortState;
   onSelectPackage(row: PackageRow): void;
+  onSortChange(sortState: PackageTableSortState): void;
 };
 
 type PackageTreeProbeProps = PackageTableProbeProps & {
@@ -263,8 +269,10 @@ function renderTabs(
   result: AnalysisResult | null,
   options: {
     isExtracting?: boolean;
+    isExportingPackagesCsv?: boolean;
     onDetailsSelectionChange?: (selection: DetailSelection | null) => void;
     onExtractSelectedContainer?: () => void;
+    onExportPackagesCsv?: (rows: PackageRow[], sortState: PackageTableSortState) => void;
     selectedFilePath?: string;
     selectedPackageId?: string;
     tableHeight?: number;
@@ -275,10 +283,12 @@ function renderTabs(
       result={result}
       selectedFilePath={options.selectedFilePath ?? 'C:\\Paks\\A.pak'}
       isExtracting={options.isExtracting ?? false}
+      isExportingPackagesCsv={options.isExportingPackagesCsv ?? false}
       selectedPackageId={options.selectedPackageId ?? ''}
       tableHeight={options.tableHeight ?? 500}
       onDetailsSelectionChange={options.onDetailsSelectionChange ?? (() => {})}
       onExtractSelectedContainer={options.onExtractSelectedContainer ?? (() => {})}
+      onExportPackagesCsv={options.onExportPackagesCsv ?? (() => {})}
     />,
   );
 }
@@ -339,10 +349,12 @@ describe('AnalysisTabs', () => {
         result={analysisResult()}
         selectedFilePath="C:\\Paks\\A.pak"
         isExtracting={false}
+        isExportingPackagesCsv={false}
         selectedPackageId=""
         tableHeight={500}
         onDetailsSelectionChange={() => {}}
         onExtractSelectedContainer={() => {}}
+        onExportPackagesCsv={() => {}}
       />,
     );
 
@@ -368,10 +380,12 @@ describe('AnalysisTabs', () => {
         result={analysisResult(barPath)}
         selectedFilePath="C:\\Paks\\A.pak"
         isExtracting={false}
+        isExportingPackagesCsv={false}
         selectedPackageId=""
         tableHeight={500}
         onDetailsSelectionChange={onDetailsSelectionChange}
         onExtractSelectedContainer={() => {}}
+        onExportPackagesCsv={() => {}}
       />,
     );
 
@@ -413,10 +427,12 @@ describe('AnalysisTabs', () => {
         }}
         selectedFilePath="C:\\Paks\\A.pak"
         isExtracting={false}
+        isExportingPackagesCsv={false}
         selectedPackageId=""
         tableHeight={500}
         onDetailsSelectionChange={() => {}}
         onExtractSelectedContainer={() => {}}
+        onExportPackagesCsv={() => {}}
       />,
     );
 
@@ -428,10 +444,12 @@ describe('AnalysisTabs', () => {
         result={{ overview: {}, issues: [], packages: [] }}
         selectedFilePath="C:\\Paks\\A.pak"
         isExtracting={false}
+        isExportingPackagesCsv={false}
         selectedPackageId=""
         tableHeight={500}
         onDetailsSelectionChange={() => {}}
         onExtractSelectedContainer={() => {}}
+        onExportPackagesCsv={() => {}}
       />,
     );
 
@@ -459,10 +477,12 @@ describe('AnalysisTabs', () => {
         result={analysisResult(barPath)}
         selectedFilePath="C:\\Paks\\A.pak"
         isExtracting={false}
+        isExportingPackagesCsv={false}
         selectedPackageId=""
         tableHeight={500}
         onDetailsSelectionChange={() => {}}
         onExtractSelectedContainer={() => {}}
+        onExportPackagesCsv={() => {}}
       />,
     );
 
@@ -496,6 +516,22 @@ describe('AnalysisTabs', () => {
     expect(onExtractSelectedContainer).toHaveBeenCalledTimes(1);
   });
 
+  test('Packages tab groups export and extract actions together on the right side', () => {
+    renderTabs(analysisResult());
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Packages' }));
+
+    const actionGroup = screen.getByTestId('package-actions');
+    expect(actionGroup).toHaveClass('package-actions');
+    expect(actionGroup).toHaveStyle({
+      display: 'flex',
+      gap: '8px',
+      marginLeft: 'auto',
+    });
+    expect(actionGroup).toContainElement(screen.getByRole('button', { name: 'Export CSV...' }));
+    expect(actionGroup).toContainElement(screen.getByRole('button', { name: 'Extract to...' }));
+  });
+
   test('Extract to button is disabled without a selected file or analysis result', () => {
     const { rerender } = renderTabs(null);
 
@@ -507,10 +543,12 @@ describe('AnalysisTabs', () => {
         result={analysisResult()}
         selectedFilePath=""
         isExtracting={false}
+        isExportingPackagesCsv={false}
         selectedPackageId=""
         tableHeight={500}
         onDetailsSelectionChange={() => {}}
         onExtractSelectedContainer={() => {}}
+        onExportPackagesCsv={() => {}}
       />,
     );
 
@@ -534,6 +572,167 @@ describe('AnalysisTabs', () => {
     const button = screen.getByRole('button', { name: 'Extract to...' });
     expect(button).toHaveAttribute('data-loading', 'true');
     expect(button).toBeDisabled();
+  });
+
+  test('Packages tab renders Export CSV button and invokes export with rows plus default sort state', () => {
+    const onExportPackagesCsv = vi.fn();
+    renderTabs(analysisResult(), { onExportPackagesCsv });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Packages' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Export CSV...' }));
+
+    expect(onExportPackagesCsv).toHaveBeenCalledTimes(1);
+    expect(onExportPackagesCsv).toHaveBeenCalledWith(
+      [expect.objectContaining({
+        id: fooPath,
+        fullPath: fooPath,
+        fileName: 'Foo.uasset',
+        physicalOrder: 7,
+      })],
+      PACKAGE_TABLE_DEFAULT_SORT,
+    );
+  });
+
+  test('Export CSV button is visible but disabled when export callback is not wired yet', () => {
+    render(
+      <AnalysisTabs
+        result={analysisResult()}
+        selectedFilePath="C:\\Paks\\A.pak"
+        isExtracting={false}
+        selectedPackageId=""
+        tableHeight={500}
+        onDetailsSelectionChange={() => {}}
+        onExtractSelectedContainer={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Packages' }));
+
+    expect(screen.getByRole('button', { name: 'Export CSV...' })).toBeDisabled();
+  });
+
+  test('Export CSV button is visible but disabled in Tree mode', () => {
+    renderTabs(analysisResult());
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Packages' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tree' }));
+
+    expect(screen.getByRole('button', { name: 'Export CSV...' })).toBeDisabled();
+  });
+
+  test('Export CSV button shows loading state and is disabled while export is in progress', () => {
+    renderTabs(analysisResult(), { isExportingPackagesCsv: true });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Packages' }));
+
+    const button = screen.getByRole('button', { name: 'Export CSV...' });
+    expect(button).toHaveAttribute('data-loading', 'true');
+    expect(button).toBeDisabled();
+  });
+
+  test('Export CSV button is disabled without selected file, result, rows, or Table mode', () => {
+    const { rerender } = renderTabs(null);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Packages' }));
+    expect(screen.getByRole('button', { name: 'Export CSV...' })).toBeDisabled();
+
+    rerender(
+      <AnalysisTabs
+        result={analysisResult()}
+        selectedFilePath=""
+        isExtracting={false}
+        isExportingPackagesCsv={false}
+        selectedPackageId=""
+        tableHeight={500}
+        onDetailsSelectionChange={() => {}}
+        onExtractSelectedContainer={() => {}}
+        onExportPackagesCsv={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Packages' }));
+    expect(screen.getByRole('button', { name: 'Export CSV...' })).toBeDisabled();
+
+    rerender(
+      <AnalysisTabs
+        result={{ overview: { packageCount: 0 }, packages: [] }}
+        selectedFilePath="C:\\Paks\\A.pak"
+        isExtracting={false}
+        isExportingPackagesCsv={false}
+        selectedPackageId=""
+        tableHeight={500}
+        onDetailsSelectionChange={() => {}}
+        onExtractSelectedContainer={() => {}}
+        onExportPackagesCsv={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Packages' }));
+    expect(screen.getByRole('button', { name: 'Export CSV...' })).toBeDisabled();
+
+    rerender(
+      <AnalysisTabs
+        result={analysisResult()}
+        selectedFilePath="C:\\Paks\\A.pak"
+        isExtracting={false}
+        isExportingPackagesCsv={false}
+        selectedPackageId=""
+        tableHeight={500}
+        onDetailsSelectionChange={() => {}}
+        onExtractSelectedContainer={() => {}}
+        onExportPackagesCsv={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Packages' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tree' }));
+    expect(screen.getByRole('button', { name: 'Export CSV...' })).toBeDisabled();
+  });
+
+  test('PackageTable sort changes update export sort state', () => {
+    const onExportPackagesCsv = vi.fn();
+    renderTabs(analysisResult(), { onExportPackagesCsv });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Packages' }));
+    const packageTableProps = harness.packageTableProps.at(-1);
+    expect(packageTableProps?.sortState).toEqual(PACKAGE_TABLE_DEFAULT_SORT);
+
+    act(() => {
+      packageTableProps?.onSortChange({ columnKey: 'size', order: 'descend' });
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Export CSV...' }));
+
+    expect(onExportPackagesCsv).toHaveBeenCalledWith(
+      expect.any(Array),
+      { columnKey: 'size', order: 'descend' },
+    );
+  });
+
+  test('PackageTable sort state resets to the default when result changes', () => {
+    const { rerender } = renderTabs(analysisResult(fooPath));
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Packages' }));
+    act(() => {
+      harness.packageTableProps.at(-1)?.onSortChange({ columnKey: 'size', order: 'descend' });
+    });
+    expect(harness.packageTableProps.at(-1)?.sortState).toEqual({ columnKey: 'size', order: 'descend' });
+
+    rerender(
+      <AnalysisTabs
+        result={analysisResult(barPath)}
+        selectedFilePath="C:\\Paks\\A.pak"
+        isExtracting={false}
+        isExportingPackagesCsv={false}
+        selectedPackageId=""
+        tableHeight={500}
+        onDetailsSelectionChange={() => {}}
+        onExtractSelectedContainer={() => {}}
+        onExportPackagesCsv={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Packages' }));
+
+    expect(harness.packageTableProps.at(-1)?.sortState).toEqual(PACKAGE_TABLE_DEFAULT_SORT);
   });
 
   test('issues render only severity, code, and message table fields', () => {

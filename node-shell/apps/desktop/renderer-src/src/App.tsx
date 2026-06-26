@@ -1,4 +1,4 @@
-import { Button, Layout, Spin, Typography } from 'antd';
+import { Button, Layout, Modal, Spin, Typography } from 'antd';
 import {
   useCallback,
   useEffect,
@@ -209,13 +209,16 @@ export default function App() {
   const isOpeningDirectory = useAppStore((state) => state.isOpeningDirectory);
   const isAnalyzing = useAppStore((state) => state.isAnalyzing);
   const isExtracting = useAppStore((state) => state.isExtracting);
+  const isExportingPackagesCsv = useAppStore((state) => state.isExportingPackagesCsv);
   const dialog = useAppStore((state) => state.dialog);
   const loadBackendInfo = useAppStore((state) => state.loadBackendInfo);
   const openDirectory = useAppStore((state) => state.openDirectory);
   const analyzeFile = useAppStore((state) => state.analyzeFile);
   const extractSelectedContainer = useAppStore((state) => state.extractSelectedContainer);
+  const exportPackagesCsv = useAppStore((state) => state.exportPackagesCsv);
   const submitAesKey = useAppStore((state) => state.submitAesKey);
   const cancelAesDialog = useAppStore((state) => state.cancelAesDialog);
+  const dismissPackagesCsvExportDialog = useAppStore((state) => state.dismissPackagesCsvExportDialog);
   const openBackendSelection = useAppStore((state) => state.openBackendSelection);
   const chooseBackend = useAppStore((state) => state.chooseBackend);
   const cancelBackendDialog = useAppStore((state) => state.cancelBackendDialog);
@@ -342,7 +345,7 @@ export default function App() {
   const backendPillText = backendPillLabel(backendInfo, analysisResult, backendText);
   const packageRootLabel = scan?.root || 'No package directory opened';
   const selectedPackageId = detailSelection?.kind === 'package' ? detailSelection.row.id : '';
-  const shellBusy = isOpeningDirectory || isAnalyzing || isExtracting;
+  const shellBusy = isOpeningDirectory || isAnalyzing || isExtracting || isExportingPackagesCsv;
   const openedPaneMaxWidthValue = openedPaneMaxWidthForViewport(viewportWidth);
 
   return (
@@ -431,10 +434,12 @@ export default function App() {
                   result={analysisResult}
                   selectedFilePath={selectedFilePath}
                   isExtracting={isExtracting}
+                  isExportingPackagesCsv={isExportingPackagesCsv}
                   selectedPackageId={selectedPackageId}
                   tableHeight={tableHeight}
                   onDetailsSelectionChange={setDetailSelection}
                   onExtractSelectedContainer={() => void extractSelectedContainer()}
+                  onExportPackagesCsv={(rows, sortState) => void exportPackagesCsv(rows, sortState)}
                 />
               </div>
             </Spin>
@@ -456,6 +461,17 @@ export default function App() {
         onCancel={cancelBackendDialog}
         onSubmit={(selectedId) => void chooseBackend(selectedId)}
       />
+      <Modal
+        cancelButtonProps={{ style: { display: 'none' } }}
+        open={Boolean(dialog.packagesCsvExport)}
+        title={dialog.packagesCsvExport?.title}
+        onCancel={dismissPackagesCsvExportDialog}
+        onOk={dismissPackagesCsvExportDialog}
+      >
+        <div style={{ whiteSpace: 'pre-wrap' }}>
+          {dialog.packagesCsvExport?.message}
+        </div>
+      </Modal>
     </Layout>
   );
 }
