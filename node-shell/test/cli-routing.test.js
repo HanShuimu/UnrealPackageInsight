@@ -1,13 +1,124 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { main } = require('../src/index.js');
+const { main, parseCli } = require('../src/index.js');
 
-test('list-backends prints manifest ids', () => {
+test('parseCli recognizes help forms', () => {
+  assert.deepEqual(parseCli(['node', 'index.js', '--help']), { command: 'help' });
+  assert.deepEqual(parseCli(['node', 'index.js', '-h']), { command: 'help' });
+  assert.deepEqual(parseCli(['node', 'index.js', 'help']), { command: 'help' });
+  assert.deepEqual(parseCli(['node', 'index.js', 'help', 'analyze']), {
+    command: 'help',
+    topic: 'analyze',
+  });
+});
+
+test('parseCli recognizes analyze, extract, and export-csv options', () => {
+  assert.deepEqual(
+    parseCli([
+      'node',
+      'index.js',
+      'analyze',
+      'C:\\Paks\\pakchunk0-Windows.pak',
+      '--backend-id',
+      'ue-5.7',
+      '--aes-key',
+      '0x1234',
+      '--pretty',
+    ]),
+    {
+      command: 'analyze',
+      filePath: 'C:\\Paks\\pakchunk0-Windows.pak',
+      backendId: 'ue-5.7',
+      aesKey: '0x1234',
+      pretty: true,
+    },
+  );
+
+  assert.deepEqual(
+    parseCli([
+      'node',
+      'index.js',
+      'extract',
+      'C:\\Paks\\pakchunk0-Windows.pak',
+      '--out-dir',
+      'C:\\Extracted',
+      '--backend-id',
+      'ue-5.7',
+      '--aes-key',
+      '0x1234',
+    ]),
+    {
+      command: 'extract',
+      filePath: 'C:\\Paks\\pakchunk0-Windows.pak',
+      outputDirectory: 'C:\\Extracted',
+      backendId: 'ue-5.7',
+      aesKey: '0x1234',
+    },
+  );
+
+  assert.deepEqual(
+    parseCli([
+      'node',
+      'index.js',
+      'export-csv',
+      'C:\\Paks\\pakchunk0-Windows.pak',
+      '--out',
+      'C:\\Exports\\packages.csv',
+    ]),
+    {
+      command: 'export-csv',
+      filePath: 'C:\\Paks\\pakchunk0-Windows.pak',
+      outputPath: 'C:\\Exports\\packages.csv',
+    },
+  );
+});
+
+test('help prints upi-cli usage without loading dependencies', async () => {
+  const output = [];
+  const exitState = {};
+  const fail = () => {
+    throw new Error('dependency should not be loaded for help');
+  };
+
+  await main({
+    argv: ['node', 'index.js', 'help', 'extract'],
+    log: (line) => output.push(line),
+    processController: exitState,
+    loadBackendManifests: fail,
+    probeContainerFile: fail,
+    operations: {
+      analyzeContainer: fail,
+      extractContainer: fail,
+      exportPackagesCsv: fail,
+    },
+  });
+
+  assert.equal(exitState.exitCode ?? 0, 0);
+  assert.match(output.join('\n'), /Usage:\n  upi-cli extract <file> --out-dir <directory>/);
+  assert.doesNotMatch(output.join('\n'), /node src\/index\.js/);
+});
+
+test('unknown help topic prints top-level usage and exits with failure', async () => {
   const output = [];
   const exitState = {};
 
-  main({
+  await main({
+    argv: ['node', 'index.js', 'help', 'bogus'],
+    log: (line) => output.push(line),
+    processController: exitState,
+  });
+
+  assert.equal(exitState.exitCode, 1);
+  assert.match(output.join('\n'), /^Unknown help topic: bogus\nUsage:/);
+  assert.match(output.join('\n'), /upi-cli analyze <file>/);
+});
+
+test('list-backends prints manifest ids', async () => {
+  const output = [];
+  const exitState = {};
+
+  await main({
     argv: ['node', 'index.js', 'list-backends'],
     log: (line) => output.push(line),
     processController: exitState,
@@ -20,162 +131,11 @@ test('list-backends prints manifest ids', () => {
   assert.equal(exitState.exitCode ?? 0, 0);
 });
 
-test('analyze reports multiple candidates without backend id', async () => {
+test('probe prints container probe JSON', async () => {
   const output = [];
   const exitState = {};
 
   await main({
-    argv: ['node', 'index.js', 'analyze', 'C:\\Paks\\pakchunk0-Windows.pak'],
-    log: (line) => output.push(line),
-    processController: exitState,
-    probeContainerFile: () => ({ containerType: 'pak', pakFormatVersion: 12 }),
-    loadBackendManifests: () => [
-      { id: 'a', engineVersion: '5.7.4', configuration: 'Development', protocolVersion: 1, supports: { pak: { versionMin: 1, versionMax: 12 } } },
-      { id: 'b', engineVersion: '5.7.4', configuration: 'Shipping', protocolVersion: 1, supports: { pak: { versionMin: 1, versionMax: 12 } } },
-    ],
-  });
-
-  assert.equal(exitState.exitCode, 1);
-  assert.match(output.join('\n'), /Multiple compatible backends found/);
-  assert.match(output.join('\n'), /--backend-id a/);
-});
-
-test('analyze rejects an invalid backend id without creating a provider', async () => {
-  const output = [];
-  const exitState = {};
-  let providerCallCount = 0;
-
-  await main({
-    argv: ['node', 'index.js', 'analyze', 'C:\\Paks\\pakchunk0-Windows.pak', '--backend-id', 'missing'],
-    log: (line) => output.push(line),
-    processController: exitState,
-    probeContainerFile: () => ({ containerType: 'pak', pakFormatVersion: 12 }),
-    loadBackendManifests: () => [
-      { id: 'a', engineVersion: '5.7.4', configuration: 'Development', protocolVersion: 1, supports: { pak: { versionMin: 1, versionMax: 12 } } },
-      { id: 'b', engineVersion: '5.7.4', configuration: 'Shipping', protocolVersion: 1, supports: { pak: { versionMin: 1, versionMax: 12 } } },
-    ],
-    providerFactory: () => {
-      providerCallCount += 1;
-      throw new Error('provider should not be created for invalid backend id');
-    },
-  });
-
-  assert.equal(exitState.exitCode, 1);
-  assert.equal(providerCallCount, 0);
-  assert.match(output.join('\n'), /Multiple compatible backends found/);
-  assert.match(output.join('\n'), /--backend-id a/);
-});
-
-test('analyze uses a single compatible backend provider and prints analysis JSON', async () => {
-  const output = [];
-  const exitState = {};
-  const calls = [];
-  const manifests = [
-    {
-      id: 'ue-5.7.4-win32-x64-development',
-      engineVersion: '5.7.4',
-      configuration: 'Development',
-      protocolVersion: 1,
-      supports: { pak: { versionMin: 1, versionMax: 12 } },
-    },
-  ];
-
-  await main({
-    argv: ['node', 'index.js', 'analyze', 'C:\\Paks\\pakchunk0-Windows.pak'],
-    log: (line) => output.push(line),
-    processController: exitState,
-    probeContainerFile: () => ({ containerType: 'pak', pakFormatVersion: 12 }),
-    loadBackendManifests: () => manifests,
-    providerFactory: (options) => {
-      calls.push({ type: 'providerFactory', options });
-      return {
-        getBackendClient(backendId) {
-          calls.push({ type: 'getBackendClient', backendId });
-          return {
-            async analyzePak(request) {
-              calls.push({ type: 'analyzePak', request });
-              return { status: 'OK', backendId, assetCount: 3 };
-            },
-          };
-        },
-      };
-    },
-  });
-
-  assert.equal(exitState.exitCode ?? 0, 0);
-  assert.deepEqual(JSON.parse(output[0]), {
-    status: 'OK',
-    backendId: 'ue-5.7.4-win32-x64-development',
-    assetCount: 3,
-  });
-  assert.equal(calls[0].type, 'providerFactory');
-  assert.equal(calls[0].options.manifests, manifests);
-  assert.equal(calls[1].backendId, 'ue-5.7.4-win32-x64-development');
-  assert.deepEqual(calls[2], {
-    type: 'analyzePak',
-    request: { pakPath: 'C:\\Paks\\pakchunk0-Windows.pak', aesKey: '' },
-  });
-});
-
-test('analyze resolves a selected UCAS to its UTOC before IoStore analysis', async () => {
-  const output = [];
-  const exitState = {};
-  const calls = [];
-  const manifests = [
-    {
-      id: 'ue-5.7.4-win32-x64-development',
-      engineVersion: '5.7.4',
-      configuration: 'Development',
-      protocolVersion: 1,
-      supports: { iostore: { tocVersionMin: 1, tocVersionMax: 8 } },
-    },
-  ];
-
-  await main({
-    argv: ['node', 'index.js', 'analyze', 'C:\\Paks\\global.ucas'],
-    log: (line) => output.push(line),
-    processController: exitState,
-    filePaths: ['C:\\Paks\\global.utoc', 'C:\\Paks\\global.ucas'],
-    probeContainerFile: (filePath) => {
-      calls.push({ type: 'probeContainerFile', filePath });
-      assert.equal(filePath, 'C:\\Paks\\global.utoc');
-      return { containerType: 'iostore', utocPath: filePath, tocFormatVersion: 8 };
-    },
-    loadBackendManifests: () => manifests,
-    providerFactory: () => ({
-      getBackendClient(backendId) {
-        calls.push({ type: 'getBackendClient', backendId });
-        return {
-          async analyzeIoStore(request) {
-            calls.push({ type: 'analyzeIoStore', request });
-            return { status: 'OK', containerType: 'iostore' };
-          },
-        };
-      },
-    }),
-  });
-
-  assert.equal(exitState.exitCode ?? 0, 0);
-  assert.deepEqual(JSON.parse(output[0]), { status: 'OK', containerType: 'iostore' });
-  assert.deepEqual(calls, [
-    { type: 'probeContainerFile', filePath: 'C:\\Paks\\global.utoc' },
-    { type: 'getBackendClient', backendId: 'ue-5.7.4-win32-x64-development' },
-    {
-      type: 'analyzeIoStore',
-      request: {
-        utocPath: 'C:\\Paks\\global.utoc',
-        ucasPath: 'C:\\Paks\\global.ucas',
-        aesKey: '',
-      },
-    },
-  ]);
-});
-
-test('probe prints container probe JSON', () => {
-  const output = [];
-  const exitState = {};
-
-  main({
     argv: ['node', 'index.js', 'probe', 'C:\\Paks\\pakchunk0-Windows.pak'],
     log: (line) => output.push(line),
     processController: exitState,
@@ -192,4 +152,145 @@ test('probe prints container probe JSON', () => {
     path: 'C:\\Paks\\pakchunk0-Windows.pak',
     pakFormatVersion: 12,
   });
+});
+
+test('analyze dispatches to injected shared operation and prints JSON safely', async () => {
+  const output = [];
+  const exitState = {};
+  const calls = [];
+  const loadBackendManifests = () => [{ id: 'manifest' }];
+  const probeContainerFile = () => ({ containerType: 'pak' });
+
+  await main({
+    argv: [
+      'node',
+      'index.js',
+      'analyze',
+      'C:\\Paks\\pakchunk0-Windows.pak',
+      '--backend-id',
+      'missing-is-still-passed-through',
+      '--aes-key',
+      '0x1234',
+    ],
+    log: (line) => output.push(line),
+    processController: exitState,
+    loadBackendManifests,
+    probeContainerFile,
+    operations: {
+      async analyzeContainer(options) {
+        calls.push(options);
+        return { status: 'OK', packageCount: 3n };
+      },
+    },
+  });
+
+  assert.equal(exitState.exitCode ?? 0, 0);
+  assert.deepEqual(calls, [{
+    filePath: 'C:\\Paks\\pakchunk0-Windows.pak',
+    backendId: 'missing-is-still-passed-through',
+    aesKey: '0x1234',
+    loadBackendManifests,
+    probeContainerFile,
+  }]);
+  assert.deepEqual(JSON.parse(output[0]), { status: 'OK', packageCount: '3' });
+});
+
+test('analyze --pretty prints indented JSON', async () => {
+  const output = [];
+  const exitState = {};
+
+  await main({
+    argv: ['node', 'index.js', 'analyze', 'C:\\Paks\\pakchunk0-Windows.pak', '--pretty'],
+    log: (line) => output.push(line),
+    processController: exitState,
+    operations: {
+      async analyzeContainer() {
+        return { status: 'OK', nested: { packageCount: 3 } };
+      },
+    },
+  });
+
+  assert.equal(exitState.exitCode ?? 0, 0);
+  assert.match(output[0], /\{\n  "status": "OK",\n  "nested": \{\n    "packageCount": 3\n  \}\n\}/);
+});
+
+test('extract dispatches to injected shared operation and prints JSON', async () => {
+  const output = [];
+  const exitState = {};
+  const calls = [];
+
+  await main({
+    argv: [
+      'node',
+      'index.js',
+      'extract',
+      'C:\\Paks\\pakchunk0-Windows.pak',
+      '--out-dir',
+      'C:\\Extracted',
+      '--backend-id',
+      'ue-5.7',
+      '--aes-key',
+      '0x1234',
+    ],
+    log: (line) => output.push(line),
+    processController: exitState,
+    operations: {
+      async extractContainer(options) {
+        calls.push(options);
+        return { status: 'OK', extractedCount: 2 };
+      },
+    },
+  });
+
+  assert.equal(exitState.exitCode ?? 0, 0);
+  assert.equal(calls[0].filePath, 'C:\\Paks\\pakchunk0-Windows.pak');
+  assert.equal(calls[0].outputDirectory, 'C:\\Extracted');
+  assert.equal(calls[0].backendId, 'ue-5.7');
+  assert.equal(calls[0].aesKey, '0x1234');
+  assert.deepEqual(JSON.parse(output[0]), { status: 'OK', extractedCount: 2 });
+});
+
+test('export-csv dispatches to injected shared operation and prints JSON', async () => {
+  const output = [];
+  const exitState = {};
+  const calls = [];
+
+  await main({
+    argv: [
+      'node',
+      'index.js',
+      'export-csv',
+      'C:\\Paks\\pakchunk0-Windows.pak',
+      '--out',
+      'C:\\Exports\\packages.csv',
+    ],
+    log: (line) => output.push(line),
+    processController: exitState,
+    operations: {
+      async exportPackagesCsv(options) {
+        calls.push(options);
+        return { status: 'OK', filePath: 'C:\\Exports\\packages.csv', packageCount: 2 };
+      },
+    },
+  });
+
+  assert.equal(exitState.exitCode ?? 0, 0);
+  assert.equal(calls[0].filePath, 'C:\\Paks\\pakchunk0-Windows.pak');
+  assert.equal(calls[0].outputPath, 'C:\\Exports\\packages.csv');
+  assert.deepEqual(JSON.parse(output[0]), {
+    status: 'OK',
+    filePath: 'C:\\Exports\\packages.csv',
+    packageCount: 2,
+  });
+});
+
+test('usage errors use upi-cli command names', () => {
+  assert.throws(
+    () => parseCli(['node', 'index.js', 'extract', 'C:\\Paks\\pakchunk0-Windows.pak']),
+    /Usage:\n  upi-cli extract <file> --out-dir <directory>/,
+  );
+  assert.throws(
+    () => parseCli(['node', 'index.js', 'wat']),
+    /upi-cli list-backends/,
+  );
 });
