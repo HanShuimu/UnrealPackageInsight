@@ -89,6 +89,10 @@ The CLI remains intentionally small and non-interactive. It should not open dial
 Supported commands:
 
 ```text
+upi --help
+upi -h
+upi help
+upi help <command>
 upi list-backends
 upi probe <container>
 upi analyze <container> [--backend-id <id>] [--aes-key <key>] [--pretty]
@@ -104,6 +108,9 @@ npm --prefix node-shell run cli -- <command>
 
 Option behavior:
 
+- `--help` and `-h` print top-level usage and exit `0` when used as the first argument.
+- `help` prints top-level usage and exits `0`.
+- `help <command>` prints command-specific usage for `probe`, `analyze`, `extract`, `export-csv`, and `list-backends`, then exits `0`.
 - `--backend-id <id>` explicitly selects a backend for the resolved probe path.
 - `--aes-key <key>` accepts the same hex or Unreal config Base64 formats as the GUI.
 - `--pretty` affects JSON output for `analyze` only.
@@ -113,6 +120,8 @@ Option behavior:
 If `--backend-id` is omitted, CLI backend selection should match GUI provider behavior: choose the first sorted compatible candidate, which prefers Development over Shipping and newer engine versions over older ones.
 
 ## Output Contract
+
+`--help`, `-h`, `help`, and `help <command>` print plain text usage, not JSON, and exit `0`. Help output must not load backend manifests, probe files, or create operation contexts.
 
 `list-backends` keeps the existing human-readable line format:
 
@@ -176,6 +185,8 @@ Expected errors should become readable CLI messages and non-zero exit codes:
 
 Structured backend/domain error responses should still be printed as JSON when the operation reaches the backend or `AnalysisService`. CLI usage errors should print plain usage text and exit `1`.
 
+Help requests are not errors. They print usage text and exit `0`, including `help` with no command. Unknown help topics, such as `help missing`, print top-level usage plus a short `Unknown help topic: missing` message and exit `1`.
+
 For `export-csv`, an analysis result with no package rows is an error. The command should not write an empty CSV and should exit `1` with a message containing `No packages to export.`
 
 ## GUI Impact
@@ -193,6 +204,7 @@ Tests should focus on shared behavior first, then CLI routing:
 - shared operation context creates `AnalysisService` with AES and backend selection,
 - shared `exportPackagesCsv` uses the shared packages table/export module,
 - CLI parses required commands and options,
+- CLI help commands print usage and do not call shared operations,
 - CLI calls shared operations instead of duplicating domain logic,
 - IoStore `.ucas` selections resolve through sibling `.utoc` pairing,
 - invalid AES keys fail before backend calls,

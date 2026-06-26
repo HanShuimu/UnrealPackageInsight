@@ -22,7 +22,7 @@
   Keep the CLI shell here: argv parsing, usage strings, stdout JSON formatting, exit codes, and command dispatch into `container-operations.js`.
 
 - Modify `node-shell/test/cli-routing.test.js`
-  Extend CLI tests for `--aes-key`, `--pretty`, `extract`, `export-csv`, required option validation, dependency injection, and no duplicated backend dispatch.
+  Extend CLI tests for `--help`, `-h`, `help`, command-specific help, `--aes-key`, `--pretty`, `extract`, `export-csv`, required option validation, dependency injection, and no duplicated backend dispatch.
 
 The existing command remains `npm --prefix node-shell run cli -- <command>`. This plan does not add a root `cli` script.
 
@@ -613,6 +613,25 @@ test('parseCli rejects missing required CLI output paths', () => {
     /Usage: node src\/index.js export-csv <file> --out <file.csv>/,
   );
 });
+
+test('parseCli parses top-level and command-specific help', () => {
+  assert.deepEqual(parseCli(['node', 'index.js', '--help']), {
+    command: 'help',
+    topic: '',
+  });
+  assert.deepEqual(parseCli(['node', 'index.js', '-h']), {
+    command: 'help',
+    topic: '',
+  });
+  assert.deepEqual(parseCli(['node', 'index.js', 'help']), {
+    command: 'help',
+    topic: '',
+  });
+  assert.deepEqual(parseCli(['node', 'index.js', 'help', 'extract']), {
+    command: 'help',
+    topic: 'extract',
+  });
+});
 ```
 
 - [ ] **Step 2: Run CLI tests and verify they fail**
@@ -623,7 +642,7 @@ Run:
 npm.cmd --prefix node-shell exec -- node --test test/cli-routing.test.js
 ```
 
-Expected: FAIL because `extract`, `export-csv`, `--aes-key`, and `--pretty` are not parsed.
+Expected: FAIL because `help`, `extract`, `export-csv`, `--aes-key`, and `--pretty` are not parsed.
 
 - [ ] **Step 3: Refactor parser**
 
@@ -632,12 +651,23 @@ Update the parser section of `node-shell/src/index.js`:
 ```js
 const USAGE = [
   'Usage:',
+  '  node src/index.js --help',
+  '  node src/index.js help [command]',
   '  node src/index.js list-backends',
   '  node src/index.js probe <file>',
   '  node src/index.js analyze <file> [--backend-id <id>] [--aes-key <key>] [--pretty]',
   '  node src/index.js extract <file> --out-dir <directory> [--backend-id <id>] [--aes-key <key>]',
   '  node src/index.js export-csv <file> --out <file.csv> [--backend-id <id>] [--aes-key <key>]',
 ].join('\n');
+
+const HELP_TOPICS = {
+  '': USAGE,
+  'list-backends': 'Usage: node src/index.js list-backends',
+  probe: 'Usage: node src/index.js probe <file>',
+  analyze: 'Usage: node src/index.js analyze <file> [--backend-id <id>] [--aes-key <key>] [--pretty]',
+  extract: 'Usage: node src/index.js extract <file> --out-dir <directory> [--backend-id <id>] [--aes-key <key>]',
+  'export-csv': 'Usage: node src/index.js export-csv <file> --out <file.csv> [--backend-id <id>] [--aes-key <key>]',
+};
 
 function readOption(args, index, usage) {
   const value = args[index + 1];
@@ -683,6 +713,13 @@ function parseCommonOptions(args, startIndex, usage, allowedOptions) {
 function parseCli(argv = process.argv) {
   const args = argv.slice(2);
   const [command] = args;
+
+  if (command === '--help' || command === '-h' || command === 'help') {
+    return {
+      command: 'help',
+      topic: command === 'help' ? (args[1] || '') : '',
+    };
+  }
 
   if (command === 'list-backends') {
     return { command };
@@ -868,6 +905,70 @@ test('extract and export-csv delegate to shared operations', async () => {
   assert.equal(JSON.parse(output[0]).status, 'OK');
   assert.equal(JSON.parse(output[1]).status, 'OK');
 });
+
+test('help prints usage, exits zero, and does not call shared operations', async () => {
+  const output = [];
+  const exitState = {};
+  let operationCallCount = 0;
+
+  await main({
+    argv: ['node', 'index.js', '--help'],
+    log: (line) => output.push(line),
+    processController: exitState,
+    loadBackendManifests: () => {
+      throw new Error('help should not load backend manifests');
+    },
+    operations: {
+      async analyzeContainer() {
+        operationCallCount += 1;
+      },
+      async extractContainer() {
+        operationCallCount += 1;
+      },
+      async exportPackagesCsv() {
+        operationCallCount += 1;
+      },
+    },
+  });
+
+  assert.equal(exitState.exitCode ?? 0, 0);
+  assert.equal(operationCallCount, 0);
+  assert.match(output.join('\n'), /Usage:/);
+  assert.match(output.join('\n'), /export-csv/);
+});
+
+test('help extract prints command-specific usage', async () => {
+  const output = [];
+  const exitState = {};
+
+  await main({
+    argv: ['node', 'index.js', 'help', 'extract'],
+    log: (line) => output.push(line),
+    processController: exitState,
+    operations: {},
+  });
+
+  assert.equal(exitState.exitCode ?? 0, 0);
+  assert.deepEqual(output, [
+    'Usage: node src/index.js extract <file> --out-dir <directory> [--backend-id <id>] [--aes-key <key>]',
+  ]);
+});
+
+test('unknown help topic exits one with a readable message', async () => {
+  const output = [];
+  const exitState = {};
+
+  await main({
+    argv: ['node', 'index.js', 'help', 'missing'],
+    log: (line) => output.push(line),
+    processController: exitState,
+    operations: {},
+  });
+
+  assert.equal(exitState.exitCode, 1);
+  assert.match(output.join('\n'), /Unknown help topic: missing/);
+  assert.match(output.join('\n'), /Usage:/);
+});
 ```
 
 - [ ] **Step 2: Run CLI tests and verify they fail**
@@ -950,6 +1051,27 @@ if (parsed.command === 'export-csv') {
     backendId: parsed.backendId,
   });
   log(jsonStringify(result));
+  processController.exitCode = 0;
+  return 0;
+}
+```
+
+Add help before command operations:
+
+```js
+function helpText(topic = '') {
+  return HELP_TOPICS[topic] || null;
+}
+
+if (parsed.command === 'help') {
+  const text = helpText(parsed.topic);
+  if (!text) {
+    log(`Unknown help topic: ${parsed.topic}`);
+    log(USAGE);
+    processController.exitCode = 1;
+    return 1;
+  }
+  log(text);
   processController.exitCode = 0;
   return 0;
 }
