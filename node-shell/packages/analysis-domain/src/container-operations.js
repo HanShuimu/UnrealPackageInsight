@@ -76,6 +76,7 @@ function createContainerOperationContext(options = {}) {
     filePath,
     aesKey,
     backendId,
+    filePaths,
     fsModule = fs,
     koffiModule,
     loadBackendManifests = defaultLoadBackendManifests,
@@ -86,11 +87,13 @@ function createContainerOperationContext(options = {}) {
 
   assertNonEmptyString(filePath, 'filePath');
 
-  const filePaths = listSiblingContainerFiles(filePath, fsModule);
   const aesSession = new AesKeySession();
   if (aesKey !== undefined) {
     aesSession.setKey(aesKey);
   }
+  const resolvedFilePaths = Array.isArray(filePaths)
+    ? filePaths
+    : listSiblingContainerFiles(filePath, fsModule);
 
   const manifests = loadBackendManifests();
   const backendClientProvider = providerFactory({
@@ -100,18 +103,18 @@ function createContainerOperationContext(options = {}) {
   });
 
   if (backendId !== undefined && backendId !== null && String(backendId).trim() !== '') {
-    backendClientProvider.setSelection(resolveBackendSelectionPath(filePath, filePaths), backendId);
+    backendClientProvider.setSelection(resolveBackendSelectionPath(filePath, resolvedFilePaths), backendId);
   }
 
   const service = new AnalysisService({
     backendClientProvider,
-    filePaths,
+    filePaths: resolvedFilePaths,
     aesSession,
   });
 
   return {
     filePath,
-    filePaths,
+    filePaths: resolvedFilePaths,
     aesSession,
     manifests,
     backendClientProvider,
@@ -120,15 +123,17 @@ function createContainerOperationContext(options = {}) {
 }
 
 async function analyzeContainer(options = {}) {
-  const context = createContainerOperationContext(options);
-  return context.service.analyze(context.filePath);
+  const { createContext = createContainerOperationContext } = options;
+  const context = await createContext(options);
+  return context.service.analyze(context.filePath || options.filePath);
 }
 
 async function extractContainer(options = {}) {
   const { outputDirectory } = options;
   assertNonEmptyString(outputDirectory, 'outputDirectory');
-  const context = createContainerOperationContext(options);
-  return context.service.extract(context.filePath, outputDirectory);
+  const { createContext = createContainerOperationContext } = options;
+  const context = await createContext(options);
+  return context.service.extract(context.filePath || options.filePath, outputDirectory);
 }
 
 function normalizeCsvOutputPath(filePath) {

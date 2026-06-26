@@ -156,6 +156,26 @@ test('createContainerOperationContext binds explicit backend id to .utoc for .uc
   }]);
 });
 
+test('createContainerOperationContext accepts injected file paths', () => {
+  const deps = createContextDependencies();
+  const context = createContainerOperationContext({
+    filePath: 'C:\\Game\\Container.pak',
+    filePaths: ['C:\\Game\\Container.pak'],
+    fsModule: {
+      readdirSync() {
+        throw new Error('filePaths injection should bypass sibling discovery');
+      },
+    },
+    koffiModule: deps.koffiModule,
+    loadBackendManifests: deps.loadBackendManifests,
+    providerFactory: deps.providerFactory,
+    probeContainerFile: deps.probeContainerFile,
+    AnalysisService: deps.AnalysisService,
+  });
+
+  assert.deepEqual(context.filePaths, ['C:\\Game\\Container.pak']);
+});
+
 test('analyzeContainer delegates to AnalysisService.analyze', async () => {
   const deps = createContextDependencies({ analyzeResult: { status: 'OK', value: 42 } });
 
@@ -166,6 +186,24 @@ test('analyzeContainer delegates to AnalysisService.analyze', async () => {
 
   assert.deepEqual(result, { status: 'OK', value: 42 });
   assert.deepEqual(deps.calls.analyze, ['C:\\Game\\Container.pak']);
+});
+
+test('analyzeContainer supports injected context creation', async () => {
+  const calls = [];
+  const result = await analyzeContainer({
+    filePath: 'C:\\Game\\Container.pak',
+    createContext: async () => ({
+      service: {
+        async analyze(filePath) {
+          calls.push(filePath);
+          return { status: 'OK' };
+        },
+      },
+    }),
+  });
+
+  assert.deepEqual(result, { status: 'OK' });
+  assert.deepEqual(calls, ['C:\\Game\\Container.pak']);
 });
 
 test('extractContainer delegates to AnalysisService.extract and requires an output directory', async () => {
