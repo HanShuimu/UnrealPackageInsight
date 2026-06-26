@@ -284,6 +284,83 @@ test('export-csv dispatches to injected shared operation and prints JSON', async
   });
 });
 
+test('operation commands exit with failure for structured error results', async () => {
+  const output = [];
+  const exitState = {};
+
+  await main({
+    argv: ['node', 'index.js', 'analyze', 'C:\\Paks\\missing.pak'],
+    log: (line) => output.push(line),
+    processController: exitState,
+    operations: {
+      async analyzeContainer() {
+        return {
+          status: 'Error',
+          issues: [{
+            severity: 'error',
+            code: 'container.file_unavailable',
+            message: 'Selected container file is unavailable.',
+          }],
+        };
+      },
+    },
+  });
+
+  assert.equal(exitState.exitCode, 1);
+  assert.deepEqual(JSON.parse(output[0]), {
+    status: 'Error',
+    issues: [{
+      severity: 'error',
+      code: 'container.file_unavailable',
+      message: 'Selected container file is unavailable.',
+    }],
+  });
+});
+
+test('operation commands exit with failure for native non-zero status results', async () => {
+  const output = [];
+  const exitState = {};
+
+  await main({
+    argv: ['node', 'index.js', 'extract', 'C:\\Paks\\Container.pak', '--out-dir', 'C:\\Out'],
+    log: (line) => output.push(line),
+    processController: exitState,
+    operations: {
+      async extractContainer() {
+        return { status: 1, errorCount: 1, issues: [] };
+      },
+    },
+  });
+
+  assert.equal(exitState.exitCode, 1);
+  assert.deepEqual(JSON.parse(output[0]), { status: 1, errorCount: 1, issues: [] });
+});
+
+test('default analyze preserves structured file-unavailable errors for missing parent directories', async () => {
+  const output = [];
+  const exitState = {};
+
+  await main({
+    argv: ['node', 'index.js', 'analyze', 'C:\\DefinitelyMissing\\Nope\\Container.pak'],
+    log: (line) => output.push(line),
+    processController: exitState,
+    loadBackendManifests: () => [],
+    probeContainerFile: () => {
+      throw new Error('file-unavailable analysis should not probe missing files');
+    },
+  });
+
+  assert.equal(exitState.exitCode, 1);
+  assert.deepEqual(JSON.parse(output[0]), {
+    status: 'Error',
+    issues: [{
+      severity: 'error',
+      code: 'container.file_unavailable',
+      message: 'Selected container file is unavailable.',
+    }],
+  });
+});
+
 test('usage errors use upi-cli command names', () => {
   assert.throws(
     () => parseCli(['node', 'index.js', 'extract', 'C:\\Paks\\pakchunk0-Windows.pak']),

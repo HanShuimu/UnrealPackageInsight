@@ -202,6 +202,38 @@ function createOperationOptions(parsed, { loadBackendManifests, probeContainerFi
   return operationOptions;
 }
 
+function hasErrorIssue(result) {
+  return Array.isArray(result?.issues)
+    && result.issues.some((issue) => issue?.severity === 'error');
+}
+
+function exitCodeForOperationResult(result) {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    return 0;
+  }
+
+  if (result.status === 'Error') {
+    return 1;
+  }
+  if (typeof result.status === 'number' && result.status !== 0) {
+    return 1;
+  }
+  if (typeof result.errorCount === 'number' && result.errorCount > 0) {
+    return 1;
+  }
+  if (hasErrorIssue(result)) {
+    return 1;
+  }
+  return 0;
+}
+
+function logOperationResult({ result, log, processController, pretty = false }) {
+  const exitCode = exitCodeForOperationResult(result);
+  log(jsonStringify(result, pretty));
+  processController.exitCode = exitCode;
+  return exitCode;
+}
+
 async function main(options = {}) {
   const argv = Array.isArray(options) ? options : options.argv || process.argv;
   const log = Array.isArray(options) ? console.log : options.log || console.log;
@@ -254,23 +286,22 @@ async function main(options = {}) {
 
     if (parsed.command === 'analyze') {
       const result = await operations.analyzeContainer(operationOptions);
-      log(jsonStringify(result, parsed.pretty));
-      processController.exitCode = 0;
-      return 0;
+      return logOperationResult({
+        result,
+        log,
+        processController,
+        pretty: parsed.pretty,
+      });
     }
 
     if (parsed.command === 'extract') {
       const result = await operations.extractContainer(operationOptions);
-      log(jsonStringify(result));
-      processController.exitCode = 0;
-      return 0;
+      return logOperationResult({ result, log, processController });
     }
 
     if (parsed.command === 'export-csv') {
       const result = await operations.exportPackagesCsv(operationOptions);
-      log(jsonStringify(result));
-      processController.exitCode = 0;
-      return 0;
+      return logOperationResult({ result, log, processController });
     }
   } catch (error) {
     log(error.message);

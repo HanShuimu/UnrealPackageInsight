@@ -52,6 +52,21 @@ function listSiblingContainerFiles(filePath, fsModule = fs) {
     .sort(comparePaths);
 }
 
+function isDirectoryUnavailableError(error) {
+  return ['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM'].includes(error?.code);
+}
+
+function resolveContainerFilePaths(filePath, fsModule) {
+  try {
+    return listSiblingContainerFiles(filePath, fsModule);
+  } catch (error) {
+    if (isDirectoryUnavailableError(error)) {
+      return [filePath];
+    }
+    throw error;
+  }
+}
+
 function defaultKoffiModule() {
   return require('koffi');
 }
@@ -93,7 +108,7 @@ function createContainerOperationContext(options = {}) {
   }
   const resolvedFilePaths = Array.isArray(filePaths)
     ? filePaths
-    : listSiblingContainerFiles(filePath, fsModule);
+    : resolveContainerFilePaths(filePath, fsModule);
 
   const manifests = loadBackendManifests();
   const backendClientProvider = providerFactory({
@@ -141,6 +156,23 @@ function normalizeCsvOutputPath(filePath) {
   return path.win32.extname(filePath).toLowerCase() === '.csv' ? filePath : `${filePath}.csv`;
 }
 
+function isStructuredFailureResult(result) {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    return false;
+  }
+
+  if (result.status === 'Error') {
+    return true;
+  }
+
+  if (typeof result.status === 'number' && result.status !== 0) {
+    return true;
+  }
+
+  return Array.isArray(result.issues)
+    && result.issues.some((issue) => issue?.severity === 'error');
+}
+
 async function exportPackagesCsv(options = {}) {
   const {
     outputPath,
@@ -151,6 +183,10 @@ async function exportPackagesCsv(options = {}) {
 
   const outputFilePath = normalizeCsvOutputPath(outputPath);
   const result = await analyzeContainer(options);
+  if (isStructuredFailureResult(result)) {
+    return result;
+  }
+
   const rows = sortPackageRows(buildPackageRows(result));
   if (rows.length === 0) {
     throw new Error('No packages to export.');

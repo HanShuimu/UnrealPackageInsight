@@ -176,6 +176,27 @@ test('createContainerOperationContext accepts injected file paths', () => {
   assert.deepEqual(context.filePaths, ['C:\\Game\\Container.pak']);
 });
 
+test('createContainerOperationContext falls back to the selected file when sibling discovery fails', () => {
+  const deps = createContextDependencies();
+  const context = createContainerOperationContext({
+    filePath: 'C:\\Missing\\Container.pak',
+    fsModule: {
+      readdirSync() {
+        const error = new Error('missing directory');
+        error.code = 'ENOENT';
+        throw error;
+      },
+    },
+    koffiModule: deps.koffiModule,
+    loadBackendManifests: deps.loadBackendManifests,
+    providerFactory: deps.providerFactory,
+    probeContainerFile: deps.probeContainerFile,
+    AnalysisService: deps.AnalysisService,
+  });
+
+  assert.deepEqual(context.filePaths, ['C:\\Missing\\Container.pak']);
+});
+
 test('analyzeContainer delegates to AnalysisService.analyze', async () => {
   const deps = createContextDependencies({ analyzeResult: { status: 'OK', value: 42 } });
 
@@ -286,6 +307,33 @@ test('exportPackagesCsv refuses empty package exports', async () => {
     /No packages to export\./,
   );
 
+  assert.equal(wrote, false);
+});
+
+test('exportPackagesCsv returns structured analysis failures without writing csv', async () => {
+  const analysisFailure = {
+    status: 'Error',
+    issues: [{
+      severity: 'error',
+      code: 'container.unsupported',
+      message: 'Unsupported container file type.',
+    }],
+  };
+  const deps = createContextDependencies({
+    analyzeResult: analysisFailure,
+  });
+  let wrote = false;
+
+  const result = await exportPackagesCsv({
+    filePath: 'C:\\Game\\Container.pak',
+    outputPath: 'C:\\Reports\\packages.csv',
+    writeFile: async () => {
+      wrote = true;
+    },
+    ...deps,
+  });
+
+  assert.deepEqual(result, analysisFailure);
   assert.equal(wrote, false);
 });
 
