@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const path = require('node:path');
 const test = require('node:test');
 
 const {
@@ -248,6 +249,38 @@ test('extractContainer delegates to AnalysisService.extract and requires an outp
   }]);
 });
 
+test('extractContainer resolves relative output directories before context creation can change cwd', async () => {
+  const originalCwd = process.cwd();
+  const changedCwd = path.join(originalCwd, 'packages');
+  const calls = [];
+
+  try {
+    const result = await extractContainer({
+      filePath: 'C:\\Game\\Container.pak',
+      outputDirectory: 'extracted',
+      createContext: async () => {
+        process.chdir(changedCwd);
+        return {
+          service: {
+            async extract(filePath, outputDirectory) {
+              calls.push({ filePath, outputDirectory });
+              return { status: 'OK', extracted: 1 };
+            },
+          },
+        };
+      },
+    });
+
+    assert.deepEqual(result, { status: 'OK', extracted: 1 });
+    assert.deepEqual(calls, [{
+      filePath: 'C:\\Game\\Container.pak',
+      outputDirectory: path.resolve(originalCwd, 'extracted'),
+    }]);
+  } finally {
+    process.chdir(originalCwd);
+  }
+});
+
 test('normalizeCsvOutputPath appends .csv when missing', () => {
   assert.equal(normalizeCsvOutputPath('C:\\Reports\\packages'), 'C:\\Reports\\packages.csv');
   assert.equal(normalizeCsvOutputPath('C:\\Reports\\packages.CSV'), 'C:\\Reports\\packages.CSV');
@@ -287,6 +320,54 @@ test('exportPackagesCsv analyzes, serializes sorted rows, writes utf8, and retur
     byteCount: Buffer.byteLength(writes[0][1], 'utf8'),
     backendId: 'ue5-main',
   });
+});
+
+test('exportPackagesCsv resolves relative output paths before analysis can change cwd', async () => {
+  const originalCwd = process.cwd();
+  const changedCwd = path.join(originalCwd, 'packages');
+  const writes = [];
+
+  try {
+    const result = await exportPackagesCsv({
+      filePath: 'C:\\Game\\Container.pak',
+      outputPath: 'reports\\packages',
+      createContext: async () => ({
+        service: {
+          async analyze() {
+            process.chdir(changedCwd);
+            return {
+              status: 'OK',
+              backendId: 'ue5-main',
+              packages: [
+                {
+                  packagePath: '../../../Game/Alpha.uasset',
+                  size: 30,
+                  compressedSize: 12,
+                  order: 1,
+                },
+              ],
+            };
+          },
+        },
+      }),
+      writeFile: async (...args) => {
+        writes.push(args);
+      },
+    });
+
+    const expectedOutputPath = path.resolve(originalCwd, 'reports\\packages.csv');
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0][0], expectedOutputPath);
+    assert.deepEqual(result, {
+      status: 'OK',
+      filePath: expectedOutputPath,
+      packageCount: 1,
+      byteCount: Buffer.byteLength(writes[0][1], 'utf8'),
+      backendId: 'ue5-main',
+    });
+  } finally {
+    process.chdir(originalCwd);
+  }
 });
 
 test('exportPackagesCsv refuses empty package exports', async () => {

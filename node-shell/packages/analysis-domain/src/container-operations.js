@@ -146,9 +146,10 @@ async function analyzeContainer(options = {}) {
 async function extractContainer(options = {}) {
   const { outputDirectory } = options;
   assertNonEmptyString(outputDirectory, 'outputDirectory');
+  const resolvedOutputDirectory = path.resolve(outputDirectory);
   const { createContext = createContainerOperationContext } = options;
   const context = await createContext(options);
-  return context.service.extract(context.filePath || options.filePath, outputDirectory);
+  return context.service.extract(context.filePath || options.filePath, resolvedOutputDirectory);
 }
 
 function normalizeCsvOutputPath(filePath) {
@@ -181,7 +182,7 @@ async function exportPackagesCsv(options = {}) {
 
   assertNonEmptyString(outputPath, 'outputPath');
 
-  const outputFilePath = normalizeCsvOutputPath(outputPath);
+  const outputFilePath = path.resolve(normalizeCsvOutputPath(outputPath));
   const result = await analyzeContainer(options);
   if (isStructuredFailureResult(result)) {
     return result;
